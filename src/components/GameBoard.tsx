@@ -710,9 +710,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           onPointerDownCard={(e, card) => handlePointerDown(e, card, 'HAND')}
         />
 
-        {/* Player Bottom HUD Bar */}
-        <div className="w-full flex items-center justify-between px-2 sm:px-4 py-1 bg-stone-950/95 border-t border-stone-800/80">
-          <div className="flex-1 max-w-3xl">
+        {/* Player Bottom HUD Bar & End Turn Action */}
+        <div className="w-full flex items-center justify-between px-1 sm:px-2 bg-stone-950/95 border-t border-stone-800/80 z-30">
+          <div className="flex-1 min-w-0">
             <PlayerHUD
               player={pA}
               isOpponent={false}
@@ -740,19 +740,19 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           </div>
 
           {/* Prominent End Turn Button at Bottom-Right */}
-          <div className="shrink-0 ml-3">
+          <div className="shrink-0 pl-1.5 pr-1 py-0.5">
             {passAction && gameState.phase === 'ACTION' && isHumanTurn ? (
               <button
                 id="end-turn-btn"
                 onClick={() => handleExecuteAction(passAction.action)}
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black text-xs shadow-xl shadow-amber-600/30 border border-amber-300 active:scale-95 transition-all flex items-center gap-1.5"
+                className="px-3 sm:px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black text-xs shadow-lg shadow-amber-600/30 border border-amber-300 active:scale-95 transition-all flex items-center gap-1"
               >
                 <span>ターン終了</span>
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-3.5 h-3.5" />
               </button>
             ) : (
-              <div className="px-3 py-1.5 rounded-xl bg-stone-900/90 border border-stone-800 text-stone-500 font-mono text-[11px]">
-                {isHumanTurn ? '待機中' : '相手行動中'}
+              <div className="px-2.5 py-1 rounded-full bg-stone-900 border border-stone-800 text-stone-500 font-mono text-[10px]">
+                {isHumanTurn ? '待機中' : '相手ターン'}
               </div>
             )}
           </div>
