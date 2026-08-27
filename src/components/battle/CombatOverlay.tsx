@@ -63,29 +63,25 @@ export const CombatOverlay: React.FC<CombatOverlayProps> = ({
       {/* Center: Context Prompt Banner */}
       <div className="flex items-center gap-2 text-xs">
         {phase === 'GUARD_STEP' && isHumanTurn ? (
-          <div className="flex items-center gap-1.5 bg-rose-950/80 border border-rose-500 px-3 py-0.5 rounded-full text-rose-200 font-bold animate-pulse">
+          <div className="flex items-center gap-1.5 bg-rose-950/90 border border-rose-500/90 px-2.5 py-0.5 rounded-full text-rose-200 font-bold animate-pulse text-[11px]">
             <Shield className="w-3.5 h-3.5 text-rose-400" />
-            <span>相手の攻撃！味方ユニットでガードするか、スルーしてください</span>
+            <span>ガードするユニットを選択</span>
           </div>
         ) : phase === 'RUNE_STEP' && isHumanTurn ? (
-          <div className="flex items-center gap-1.5 bg-purple-950/80 border border-purple-500 px-3 py-0.5 rounded-full text-purple-200 font-bold animate-bounce">
+          <div className="flex items-center gap-1.5 bg-purple-950/90 border border-purple-500/90 px-2.5 py-0.5 rounded-full text-purple-200 font-bold animate-bounce text-[11px]">
             <Zap className="w-3.5 h-3.5 text-purple-400" />
-            <span>ルーン誘発！発動しますか？</span>
+            <span>ルーンを発動しますか？</span>
           </div>
         ) : selectedAttackerInstanceId ? (
-          <div className="flex items-center gap-1.5 bg-rose-950/80 border border-rose-500 px-3 py-0.5 rounded-full text-rose-200 font-bold">
+          <div className="flex items-center gap-1.5 bg-rose-950/90 border border-rose-500/90 px-2.5 py-0.5 rounded-full text-rose-200 font-bold text-[11px]">
             <Swords className="w-3.5 h-3.5 text-rose-400" />
-            <span>攻撃対象（相手ユニットまたは結界）を選択してください</span>
+            <span>攻撃対象を選択</span>
           </div>
         ) : phase === 'ARCANA' && isHumanTurn ? (
-          <span className="text-amber-300/90 text-[11px] font-medium hidden sm:inline">
-            手札からアルカナに置くカードを選択、またはスキップしてください
+          <span className="text-amber-400/90 text-[10px] font-bold hidden sm:inline">
+            アルカナにセットするカードを選択
           </span>
-        ) : (
-          <span className="text-[11px] text-stone-400">
-            {isHumanTurn ? 'あなたの行動番です' : '相手の行動中...'}
-          </span>
-        )}
+        ) : null}
       </div>
 
       {/* Right: Urgent Context Action Buttons */}
@@ -93,39 +89,39 @@ export const CombatOverlay: React.FC<CombatOverlayProps> = ({
         {selectedAttackerInstanceId && (
           <button
             onClick={onClearAttacker}
-            className="px-2.5 py-0.5 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-200 text-[11px] font-bold border border-stone-600 flex items-center gap-1 transition-colors"
+            className="px-2.5 py-1 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold border border-stone-600 flex items-center gap-1 active:scale-95 transition-all shadow-sm"
           >
             <X className="w-3 h-3" />
-            <span>攻撃解除</span>
+            <span>解除</span>
           </button>
         )}
 
         {phase === 'GUARD_STEP' && isHumanTurn && passAction && (
           <button
             onClick={() => onExecuteAction(passAction.action)}
-            className="px-3 py-1 rounded-full bg-rose-600 hover:bg-rose-500 text-white text-xs font-black border border-rose-400 shadow-md active:scale-95 transition-all animate-pulse"
+            className="px-3 py-1 rounded-full bg-rose-600 hover:bg-rose-500 text-white text-xs font-black border border-rose-400 shadow-lg shadow-rose-900/50 active:scale-95 transition-all animate-pulse"
           >
-            スルー（防御しない）
+            スルー
           </button>
         )}
 
         {phase === 'RUNE_STEP' && isHumanTurn && (
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             {legalActions.filter(a => a.category === 'TRIGGER').map((act, i) => (
               <button
                 key={i}
                 onClick={() => onExecuteAction(act.action)}
-                className="px-2.5 py-0.5 rounded-full bg-purple-600 hover:bg-purple-500 text-white text-xs font-black border border-purple-400 shadow-md active:scale-95 transition-all"
+                className="px-3 py-1 rounded-full bg-purple-600 hover:bg-purple-500 text-white text-xs font-black border border-purple-400 shadow-md active:scale-95 transition-all"
               >
-                発動する
+                発動
               </button>
             ))}
             {passAction && (
               <button
                 onClick={() => onExecuteAction(passAction.action)}
-                className="px-2.5 py-0.5 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-bold border border-stone-600"
+                className="px-2.5 py-1 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-bold border border-stone-600 active:scale-95 transition-all"
               >
-                温存（発動しない）
+                温存
               </button>
             )}
           </div>
@@ -134,9 +130,9 @@ export const CombatOverlay: React.FC<CombatOverlayProps> = ({
         {phase === 'ARCANA' && isHumanTurn && passAction && (
           <button
             onClick={() => onExecuteAction(passAction.action)}
-            className="px-2.5 py-0.5 rounded-full bg-stone-800 hover:bg-stone-700 text-amber-300 text-[11px] font-bold border border-stone-600"
+            className="px-2.5 py-1 rounded-full bg-stone-800 hover:bg-stone-700 text-amber-300 text-xs font-bold border border-stone-600 active:scale-95 transition-all"
           >
-            アルカナスキップ
+            スキップ
           </button>
         )}
       </div>

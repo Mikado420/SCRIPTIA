@@ -167,7 +167,7 @@ export const HandZone: React.FC<HandZoneProps> = ({
               e.stopPropagation();
               onInspectCard(selectedCard.baseCard);
             }}
-            className="px-2 py-1 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold flex items-center gap-1 border border-stone-700 transition-colors"
+            className="px-2.5 py-1 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold flex items-center gap-1 border border-stone-700 active:scale-95 transition-all"
             title="カード詳細"
           >
             <Info className="w-3 h-3 text-amber-400" />
@@ -180,7 +180,7 @@ export const HandZone: React.FC<HandZoneProps> = ({
               e.stopPropagation();
               onSelectCard(null);
             }}
-            className="p-1 text-stone-400 hover:text-white transition-colors"
+            className="p-1 rounded-full text-stone-400 hover:text-white hover:bg-stone-800 active:scale-95 transition-all"
             title="選択解除"
           >
             <X className="w-3.5 h-3.5" />

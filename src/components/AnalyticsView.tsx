@@ -179,7 +179,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
               {report.avgTurns} <span className="text-sm font-normal text-stone-500">ターン</span>
             </div>
             <div className="text-[11px] text-stone-500 mt-0.5">
-              平均残存ライフ: {report.avgFinalBarrier} 結界
+              平均残存結界: {report.avgFinalBarrier} 結界
             </div>
           </div>
           <div className="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">

@@ -108,7 +108,7 @@ export const PRESET_DECKS: Deck[] = [
     cardPoolVersion: CARD_POOL_VERSION,
     createdAt: '2026-03-01',
     updatedAt: '2026-03-01',
-    description: 'ハンデスと除去で相手のリソースを枯渇させ、墓地肥やしから不死王ベルゼネクで何度でも蘇るリアニメイトデッキ。',
+    description: 'ハンデスと除去で相手のリソースを枯渇させ、アーカイブを活用して不死王ベルゼネクで何度でも蘇るリアニメイトデッキ。',
     cards: [
       'E-01', 'E-01', 'E-01', 'E-01', // 墓守の亡者ネグロ (4)
       'E-02', 'E-02', 'E-02', 'E-02', // 黒衣の亡者グリム (4)

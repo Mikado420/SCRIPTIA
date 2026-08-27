@@ -173,6 +173,7 @@ export const CardItem: React.FC<CardItemProps> = ({
       id={`card-${baseCard.cardId}-${cardInst?.instanceId || 'base'}`}
       onClick={handleClick}
       onPointerDown={onPointerDown}
+      style={{ touchAction: isInteractive ? 'none' : 'auto' }}
       className={`relative select-none border-2 flex flex-col justify-between transition-all duration-150 cursor-pointer shadow-md shrink-0 ${
         sizeConfig.container
       } ${factionTheme.bg} ${factionTheme.border} ${
@@ -193,7 +194,7 @@ export const CardItem: React.FC<CardItemProps> = ({
           : ''
       } ${
         isGuardable
-          ? 'ring-2 ring-sky-400 shadow-lg shadow-sky-500/40 hover:scale-105 z-10 border-sky-400'
+          ? 'ring-2 ring-sky-400 shadow-lg shadow-sky-500/40 hover:scale-105 z-10 border-sky-400 animate-pulse'
           : ''
       } hover:border-white/80 active:scale-95`}
     >
@@ -276,7 +277,7 @@ export const CardItem: React.FC<CardItemProps> = ({
         </div>
       ) : (
         <div className="text-[8px] text-stone-400 text-center font-mono truncate pt-0.5 border-t border-stone-800">
-          {baseCard.cardType === 'SPELL' ? '即時発動' : baseCard.cardType === 'RUNE' ? '誘発ルーン' : '永続領域'}
+          {baseCard.cardType === 'SPELL' ? '即時発動' : baseCard.cardType === 'RUNE' ? '誘発ルーン' : 'ドメイン'}
         </div>
       )}
 

@@ -107,6 +107,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   const autoPlayTimerRef = useRef<NodeJS.Timeout | null>(null);
   const matchIdRef = useRef<string>('');
   const isActionExecutingRef = useRef<boolean>(false);
+  const lastDragEndTimeRef = useRef<number>(0);
+  const dragPointerIdRef = useRef<number | null>(null);
 
   // Invariant verification check
   const verifyGameInvariants = (state: GameState, logSource: string) => {
@@ -210,7 +212,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         break;
       case 'PLAY_DOMAIN':
         audioService.playDomain();
-        setCombatAnimation({ type: 'SPELL', sourceText: '領域(ドメイン)展開' });
+        setCombatAnimation({ type: 'SPELL', sourceText: 'ドメイン展開' });
         break;
       case 'END_TURN':
         audioService.playTurn();
@@ -350,13 +352,18 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     }
   }, [gameState, isAutoPlaying, playerAIsAI, playerBIsAI]);
 
-  // Pointer drag handlers
+  // Pointer drag handlers with capture and threshold
   const handlePointerDown = (
     e: React.PointerEvent,
     card: CardData | CardInstance,
     source: 'HAND' | 'PLAYER_UNIT' | 'GUARD_UNIT'
   ) => {
     if (!isHumanTurn || isProcessingStep) return;
+
+    dragPointerIdRef.current = e.pointerId;
+    try {
+      (e.currentTarget as HTMLElement)?.setPointerCapture?.(e.pointerId);
+    } catch {}
 
     setDragState({
       card,
@@ -374,9 +381,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
     const dx = e.clientX - dragState.startX;
     const dy = e.clientY - dragState.startY;
-    const distSq = dx * dx + dy * dy;
+    const distance = Math.hypot(dx, dy);
 
-    if (distSq > 64) {
+    // 12px threshold to distinguish deliberate drag from slight finger wobble
+    if (distance >= 12 || dragState.isDragging) {
       setDragState((prev) =>
         prev ? { ...prev, currentX: e.clientX, currentY: e.clientY, isDragging: true } : null
       );
@@ -394,13 +402,23 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     }
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e?: React.PointerEvent) => {
+    if (e && dragPointerIdRef.current !== null) {
+      try {
+        (e.currentTarget as HTMLElement)?.releasePointerCapture?.(e.pointerId);
+      } catch {}
+      dragPointerIdRef.current = null;
+    }
+
     if (!dragState) return;
 
     const { card, source, isDragging } = dragState;
     const cardInstId = 'instanceId' in card ? card.instanceId : undefined;
 
     if (isDragging && cardInstId) {
+      // Mark timestamp so subsequent click events are safely suppressed
+      lastDragEndTimeRef.current = Date.now();
+
       // 1. Hand card drop
       if (source === 'HAND') {
         if (gameState?.phase === 'ARCANA' && (hoveredDropZone === 'ARCANA_ZONE' || hoveredDropZone === 'PLAYER_ARCANA')) {
@@ -507,6 +525,17 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     setHoveredDropZone(null);
   };
 
+  const handlePointerCancel = (e?: React.PointerEvent) => {
+    if (e && dragPointerIdRef.current !== null) {
+      try {
+        (e.currentTarget as HTMLElement)?.releasePointerCapture?.(e.pointerId);
+      } catch {}
+      dragPointerIdRef.current = null;
+    }
+    setDragState(null);
+    setHoveredDropZone(null);
+  };
+
   if (!gameState) {
     return (
       <div className="h-full w-full flex items-center justify-center text-stone-400 bg-stone-950">
@@ -548,10 +577,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       id="game-board-container"
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      onPointerCancel={() => {
-        setDragState(null);
-        setHoveredDropZone(null);
-      }}
+      onPointerCancel={handlePointerCancel}
       className="h-[100dvh] w-screen flex flex-col justify-between bg-stone-950 text-stone-100 overflow-hidden relative select-none"
       style={{
         paddingTop: 'env(safe-area-inset-top, 0px)',
@@ -740,12 +766,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         <div
           style={{
             position: 'fixed',
-            left: dragState.currentX - 38,
-            top: dragState.currentY - 53,
+            left: dragState.currentX - 45,
+            top: dragState.currentY - 75,
             pointerEvents: 'none',
             zIndex: 9999,
           }}
-          className="opacity-90 scale-105 shadow-2xl transition-transform"
+          className="opacity-95 scale-110 shadow-2xl transition-transform drop-shadow-[0_12px_24px_rgba(0,0,0,0.85)] filter brightness-110"
         >
           <CardItem card={dragState.card} size="xs" isInteractive={false} />
         </div>
@@ -779,7 +805,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       <ArchiveOverlay
         isOpen={archiveModalTarget !== null}
         onClose={() => setArchiveModalTarget(null)}
-        title={archiveModalTarget === 'A' ? `${pA.name} の墓地 (アーカイブ)` : `${pB.name} の墓地 (アーカイブ)`}
+        title={archiveModalTarget === 'A' ? `${pA.name} のアーカイブ` : `${pB.name} のアーカイブ`}
         cards={archiveModalTarget === 'A' ? pA.archive : pB.archive}
         onInspectCard={(c) => setDetailCard(c)}
       />

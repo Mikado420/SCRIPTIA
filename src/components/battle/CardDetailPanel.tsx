@@ -26,7 +26,7 @@ export const CardDetailPanel: React.FC<CardDetailPanelProps> = ({ card, onClose 
       case 'EVOLVE_UNIT': return '進化ユニット';
       case 'SPELL': return 'スペル (即時)';
       case 'RUNE': return 'ルーン (迎撃・誘発)';
-      case 'DOMAIN': return 'ドメイン (永続領域)';
+      case 'DOMAIN': return 'ドメイン (永続設置)';
       default: return 'カード';
     }
   };

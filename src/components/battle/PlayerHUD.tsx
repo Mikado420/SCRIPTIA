@@ -107,10 +107,10 @@ export const PlayerHUD: React.FC<PlayerHUDProps> = ({
           <button
             onClick={onOpenArchive}
             className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-stone-900 hover:bg-stone-800 border border-stone-800 hover:border-amber-400/80 text-stone-300 transition-colors"
-            title="墓地 (アーカイブ) を確認"
+            title="アーカイブを確認"
           >
             <BookOpen className="w-2.5 h-2.5 text-stone-400" />
-            <span>墓地:{player.archive.length}</span>
+            <span>アーカイブ:{player.archive.length}</span>
           </button>
         </div>
       </div>
@@ -123,7 +123,7 @@ export const PlayerHUD: React.FC<PlayerHUDProps> = ({
             <div
               onClick={() => onInspectCard && onInspectCard(player.domain!.baseCard)}
               className="flex items-center gap-1 px-2 py-0.5 bg-indigo-950/90 border border-indigo-500 rounded-md cursor-pointer hover:border-indigo-300 shadow-sm transition-all animate-pulse-ring"
-              title={`領域(ドメイン): ${player.domain.baseCard.name} (タップで詳細)`}
+              title={`ドメイン: ${player.domain.baseCard.name} (タップで詳細)`}
             >
               <Layers className="w-3 h-3 text-indigo-400" />
               <span className="text-[10px] font-bold text-indigo-200 truncate max-w-[80px] sm:max-w-[110px]">
@@ -132,7 +132,7 @@ export const PlayerHUD: React.FC<PlayerHUDProps> = ({
             </div>
           ) : (
             <div className="hidden sm:flex items-center gap-1 px-2 py-0.5 border border-dashed border-stone-800 rounded-md text-[9px] text-stone-600 font-mono">
-              <span>領域なし</span>
+              <span>ドメインなし</span>
             </div>
           )}
         </div>

@@ -303,7 +303,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs font-bold text-stone-300 flex items-center gap-1.5">
               <BarChart2 className="w-4 h-4 text-amber-400" />
-              マナカーブ (コスト別分布)
+              コストカーブ (アルカナ別分布)
             </span>
             <span className="text-[11px] text-stone-500">
               平均コスト: {(deckCards.reduce((acc, cid) => acc + getCardById(cid).cost, 0) / (deckCards.length || 1)).toFixed(2)}

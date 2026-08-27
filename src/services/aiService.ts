@@ -116,7 +116,7 @@ export class AIService {
       const data = await response.json();
       return data.review || '対戦総括を取得できませんでした。';
     } catch {
-      return 'オフライン対戦総括: 序盤のマナカーブとテンポ維持が勝敗を分けました。';
+      return 'オフライン対戦総括: 序盤のアルカナ配分とテンポ維持が勝敗を分けました。';
     }
   }
 }

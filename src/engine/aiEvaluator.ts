@@ -105,7 +105,7 @@ export class AIEvaluator {
         if (me.arcana.length < 5) {
           resourceAdvantage = 9.0;
           futureValue = 8.5;
-          rationale = `序盤のマナ展開を最優先。次ターンの高コスト展開へ繋げる。`;
+          rationale = `序盤のアルカナ展開を最優先。次ターンの高コスト展開へ繋げる。`;
         } else if (me.arcana.length < 7) {
           resourceAdvantage = 7.0;
           futureValue = 7.0;
@@ -127,7 +127,7 @@ export class AIEvaluator {
           resourceAdvantage = 2.0;
           futureValue = 2.0;
           risk = 8.0;
-          rationale = `序盤のマナ停止はテンポロスになる恐れあり。`;
+          rationale = `序盤のアルカナ停止はテンポロスになる恐れあり。`;
         }
         break;
       }
