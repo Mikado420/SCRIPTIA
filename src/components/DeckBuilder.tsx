@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { CardData, Deck, FactionCode, CardType } from '../types/game';
 import { ALL_CARDS, CARD_POOL_VERSION, getCardById } from '../data/cards';
 import { PRESET_DECKS, validateDeck } from '../data/presetDecks';
@@ -16,7 +16,6 @@ import {
   Play,
   Copy,
   Edit3,
-  ArrowLeft,
   Search,
   Filter,
   RotateCcw,
@@ -27,6 +26,9 @@ import {
   Heart,
   X,
   FileText,
+  ChevronDown,
+  Info,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 interface DeckBuilderProps {
@@ -39,7 +41,7 @@ interface DeckBuilderProps {
   customDecks: Deck[];
 }
 
-type BuilderMobileTab = 'POOL' | 'DECK' | 'ANALYSIS';
+type MobileTab = 'POOL' | 'DECK' | 'MANAGE' | 'ANALYSIS';
 type SortOption = 'COST_ASC' | 'COST_DESC' | 'NAME_ASC' | 'COUNT_DESC' | 'TYPE';
 
 export const DeckBuilder: React.FC<DeckBuilderProps> = ({
@@ -51,19 +53,24 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
   onStartBattleWithDeck,
   customDecks,
 }) => {
-  // Mode: LIST (Deck manager) or EDIT (Active deck editing)
-  const [viewMode, setViewMode] = useState<'LIST' | 'EDIT'>('LIST');
+  const allDecks = useMemo(() => [...customDecks, ...PRESET_DECKS], [customDecks]);
 
-  // Currently Editing Deck States
-  const [editingDeckId, setEditingDeckId] = useState<string>('');
+  // Active Deck ID being edited
+  const [activeDeckId, setActiveDeckId] = useState<string>(() => {
+    if (customDecks.length > 0) return customDecks[0].deckId;
+    return PRESET_DECKS[0].deckId;
+  });
+
+  // Current Deck Form State
   const [deckName, setDeckName] = useState<string>('新規カスタムデッキ');
   const [deckFaction, setDeckFaction] = useState<FactionCode>('RED');
   const [deckVersion, setDeckVersion] = useState<string>('v1.0');
   const [deckCards, setDeckCards] = useState<string[]>([]);
   const [deckCreatedAt, setDeckCreatedAt] = useState<string>('');
   const [deckDescription, setDeckDescription] = useState<string>('');
+  const [isPresetSource, setIsPresetSource] = useState<boolean>(false);
 
-  // Initial snapshot to accurately track unsaved changes (isDirty)
+  // Initial snapshot to track dirty state
   const initialSnapshotRef = useRef<{
     name: string;
     faction: FactionCode;
@@ -78,119 +85,132 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
     description: '',
   });
 
-  // Mobile sub-tab in EDIT mode
-  const [mobileTab, setMobileTab] = useState<BuilderMobileTab>('POOL');
+  // Mobile navigation tab
+  const [mobileTab, setMobileTab] = useState<MobileTab>('POOL');
 
-  // Card Pool Filters & Sort
+  // Filters & Search
   const [filterFaction, setFilterFaction] = useState<FactionCode | 'ALL'>('ALL');
   const [filterType, setFilterType] = useState<string>('ALL');
   const [filterCost, setFilterCost] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<SortOption>('COST_ASC');
 
-  // Feedback notifications
-  const [notification, setNotification] = useState<{ message: string; type: 'SUCCESS' | 'ERROR' | 'INFO' } | null>(null);
+  // Inspected Card Detail in Builder
+  const [selectedCardForModal, setSelectedCardForModal] = useState<CardData | null>(null);
+
+  // Feedback Notifications
+  const [notification, setNotification] = useState<{
+    message: string;
+    type: 'SUCCESS' | 'ERROR' | 'INFO';
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const showNotification = (message: string, type: 'SUCCESS' | 'ERROR' | 'INFO' = 'SUCCESS') => {
     setNotification({ message, type });
     setTimeout(() => {
       setNotification((curr) => (curr?.message === message ? null : curr));
-    }, 3000);
+    }, 3200);
   };
 
-  // Helper to generate unique stable deck ID
   const generateNewDeckId = () => {
     return `deck_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   };
 
-  // --------------------------------------------------------------------------
-  // Deck Lifecycle Actions
-  // --------------------------------------------------------------------------
+  // Load a deck into the active editor
+  const loadDeckIntoEditor = (deck: Deck, isPreset: boolean = false) => {
+    // Sanitize cards by verifying card ID exists in card pool
+    const sanitizedCards = (deck.cards || []).filter((cid) => getCardById(cid) !== undefined);
 
-  // Start new empty/template deck
-  const handleCreateNewDeck = (templateCards: string[] = []) => {
-    const newId = generateNewDeckId();
-    const now = new Date().toISOString();
-    const defaultCards = templateCards.length > 0 ? [...templateCards] : [...PRESET_DECKS[0].cards];
-    
-    setEditingDeckId(newId);
-    setDeckName('新規カスタムデッキ');
-    setDeckFaction('RED');
-    setDeckVersion('v1.0');
-    setDeckCards(defaultCards);
-    setDeckCreatedAt(now);
-    setDeckDescription('');
-
-    initialSnapshotRef.current = {
-      name: '新規カスタムデッキ',
-      faction: 'RED',
-      version: 'v1.0',
-      cards: [...defaultCards],
-      description: '',
-    };
-
-    setViewMode('EDIT');
-    setMobileTab('POOL');
-  };
-
-  // Open existing custom deck for editing
-  const handleOpenEditDeck = (deck: Deck) => {
-    setEditingDeckId(deck.deckId);
+    setActiveDeckId(deck.deckId);
     setDeckName(deck.deckName);
     setDeckFaction(deck.faction);
     setDeckVersion(deck.deckVersion || 'v1.0');
-    setDeckCards([...deck.cards]);
+    setDeckCards(sanitizedCards);
     setDeckCreatedAt(deck.createdAt || new Date().toISOString());
     setDeckDescription(deck.description || '');
+    setIsPresetSource(isPreset);
 
     initialSnapshotRef.current = {
       name: deck.deckName,
       faction: deck.faction,
       version: deck.deckVersion || 'v1.0',
-      cards: [...deck.cards],
+      cards: [...sanitizedCards],
       description: deck.description || '',
     };
-
-    setViewMode('EDIT');
-    setMobileTab('POOL');
   };
 
-  // Copy a preset into a brand new editable custom deck
-  const handleCopyPreset = (preset: Deck) => {
+  // Initial load
+  useEffect(() => {
+    const target = allDecks.find((d) => d.deckId === activeDeckId) || allDecks[0];
+    if (target) {
+      const isPreset = PRESET_DECKS.some((p) => p.deckId === target.deckId);
+      loadDeckIntoEditor(target, isPreset);
+    }
+  }, []);
+
+  // Handle deck selection change from dropdown / list
+  const handleSelectDeck = (deckId: string) => {
+    if (isDirty) {
+      if (!window.confirm('未保存の変更があります。変更を破棄して別のデッキを読み込みますか？')) {
+        return;
+      }
+    }
+    const found = allDecks.find((d) => d.deckId === deckId);
+    if (found) {
+      const isPreset = PRESET_DECKS.some((p) => p.deckId === found.deckId);
+      loadDeckIntoEditor(found, isPreset);
+      showNotification(`デッキ「${found.deckName}」を読み込みました。`, 'INFO');
+    }
+  };
+
+  // Create brand new custom deck
+  const handleCreateNewDeck = (templateCards: string[] = []) => {
+    if (isDirty) {
+      if (!window.confirm('未保存の変更があります。現在の編集を破棄して新規デッキを作成しますか？')) {
+        return;
+      }
+    }
     const newId = generateNewDeckId();
     const now = new Date().toISOString();
-    const newName = `${preset.deckName} (コピー)`;
-    
-    setEditingDeckId(newId);
-    setDeckName(newName);
-    setDeckFaction(preset.faction);
-    setDeckVersion('v1.0');
-    setDeckCards([...preset.cards]);
-    setDeckCreatedAt(now);
-    setDeckDescription(preset.description ? `${preset.description} [コピー]` : '');
+    const defaultCards = templateCards.length > 0 ? [...templateCards] : [...PRESET_DECKS[0].cards];
 
-    initialSnapshotRef.current = {
-      name: newName,
-      faction: preset.faction,
-      version: 'v1.0',
-      cards: [...preset.cards],
-      description: preset.description ? `${preset.description} [コピー]` : '',
+    const newDeck: Deck = {
+      deckId: newId,
+      deckName: '新規カスタムデッキ',
+      faction: 'RED',
+      cards: defaultCards,
+      deckVersion: 'v1.0',
+      cardPoolVersion: CARD_POOL_VERSION,
+      createdAt: now,
+      updatedAt: now,
+      description: '',
     };
 
-    setViewMode('EDIT');
-    setMobileTab('POOL');
-    showNotification(`プリセット「${preset.deckName}」を新規デッキとして読み込みました。`, 'INFO');
+    loadDeckIntoEditor(newDeck, false);
+    showNotification('新しいデッキを作成しました。カードを追加・編集してください。', 'INFO');
   };
 
-  // Duplicate an existing custom deck
-  const handleDuplicateCustomDeck = (source: Deck) => {
-    if (onDuplicateDeck) {
-      onDuplicateDeck(source);
-      showNotification(`デッキ「${source.deckName}」を複製しました。`, 'SUCCESS');
-      return;
-    }
+  // Copy preset as a new editable custom deck
+  const handleCopyPresetAsCustom = (preset: Deck) => {
+    const newId = generateNewDeckId();
+    const now = new Date().toISOString();
+    const newDeck: Deck = {
+      ...preset,
+      deckId: newId,
+      deckName: `${preset.deckName} (カスタム)`,
+      cards: [...preset.cards],
+      createdAt: now,
+      updatedAt: now,
+      description: preset.description ? `${preset.description} [編集版]` : '',
+    };
 
+    onSaveCustomDeck(newDeck);
+    loadDeckIntoEditor(newDeck, false);
+    showNotification(`プリセット「${preset.deckName}」をマイデッキとして複製・読み込みました。`, 'SUCCESS');
+  };
+
+  // Duplicate current or selected deck
+  const handleDuplicateDeckAction = (source: Deck) => {
     const newId = generateNewDeckId();
     const now = new Date().toISOString();
     const newDeck: Deck = {
@@ -201,21 +221,46 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
       createdAt: now,
       updatedAt: now,
     };
+
     onSaveCustomDeck(newDeck);
+    loadDeckIntoEditor(newDeck, false);
     showNotification(`デッキ「${source.deckName}」を複製しました。`, 'SUCCESS');
   };
 
-  // Delete a custom deck
-  const handleDeleteCustomDeck = (deck: Deck) => {
-    if (window.confirm(`カスタムデッキ「${deck.deckName}」を削除しますか？この操作は取り消せません。`)) {
+  // Delete current or custom deck
+  const handleDeleteDeckAction = (deckIdToDelete: string) => {
+    const targetDeck = customDecks.find((d) => d.deckId === deckIdToDelete);
+    if (!targetDeck) {
+      showNotification('公式プリセットデッキは削除できません。', 'ERROR');
+      return;
+    }
+
+    if (window.confirm(`マイデッキ「${targetDeck.deckName}」を削除しますか？この操作は取り消せません。`)) {
       if (onDeleteCustomDeck) {
-        onDeleteCustomDeck(deck.deckId);
+        onDeleteCustomDeck(deckIdToDelete);
       }
-      showNotification(`デッキ「${deck.deckName}」を削除しました。`, 'INFO');
+      showNotification(`デッキ「${targetDeck.deckName}」を削除しました。`, 'INFO');
+
+      // If we deleted the active deck, load the next available deck
+      const remainingCustom = customDecks.filter((d) => d.deckId !== deckIdToDelete);
+      if (remainingCustom.length > 0) {
+        loadDeckIntoEditor(remainingCustom[0], false);
+      } else {
+        loadDeckIntoEditor(PRESET_DECKS[0], true);
+      }
     }
   };
 
-  // Check if current edit has unsaved changes
+  // Calculate adoption count per card in active deck
+  const cardCounts: Record<string, number> = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const cardId of deckCards) {
+      counts[cardId] = (counts[cardId] || 0) + 1;
+    }
+    return counts;
+  }, [deckCards]);
+
+  // Check dirty state
   const isDirty = useMemo(() => {
     const snap = initialSnapshotRef.current;
     if (deckName !== snap.name) return true;
@@ -223,8 +268,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
     if (deckVersion !== snap.version) return true;
     if (deckDescription !== snap.description) return true;
     if (deckCards.length !== snap.cards.length) return true;
-    
-    // Compare card frequencies
+
     const curCounts: Record<string, number> = {};
     for (const c of deckCards) curCounts[c] = (curCounts[c] || 0) + 1;
     const snapCounts: Record<string, number> = {};
@@ -237,10 +281,10 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
     return false;
   }, [deckName, deckFaction, deckVersion, deckDescription, deckCards]);
 
-  // Current deck object to save
+  // Current deck object
   const currentDeckObj: Deck = useMemo(() => {
     return {
-      deckId: editingDeckId || generateNewDeckId(),
+      deckId: activeDeckId || generateNewDeckId(),
       deckName: deckName.trim() || '名称未設定デッキ',
       faction: deckFaction,
       cards: [...deckCards],
@@ -250,34 +294,46 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
       updatedAt: new Date().toISOString(),
       description: deckDescription,
     };
-  }, [editingDeckId, deckName, deckFaction, deckCards, deckVersion, deckCreatedAt, deckDescription]);
+  }, [activeDeckId, deckName, deckFaction, deckCards, deckVersion, deckCreatedAt, deckDescription]);
 
   const validation = useMemo(() => validateDeck(currentDeckObj), [currentDeckObj]);
 
   // Save current deck
-  const handleSave = () => {
+  const handleSaveDeck = () => {
     if (!validation.valid) {
       showNotification(`デッキを保存できません: ${validation.errors.join(', ')}`, 'ERROR');
       return;
     }
 
-    onSaveCustomDeck(currentDeckObj);
+    let deckToSave = currentDeckObj;
+    // If the user modified a preset deck, generate a custom deck ID so preset remains intact
+    if (isPresetSource) {
+      const newCustomId = generateNewDeckId();
+      deckToSave = {
+        ...currentDeckObj,
+        deckId: newCustomId,
+        deckName: `${deckName} (カスタム)`,
+      };
+      setActiveDeckId(newCustomId);
+      setIsPresetSource(false);
+    }
 
-    // Update snapshot after successful save so isDirty becomes false
+    onSaveCustomDeck(deckToSave);
+
     initialSnapshotRef.current = {
-      name: currentDeckObj.deckName,
-      faction: currentDeckObj.faction,
-      version: currentDeckObj.deckVersion,
-      cards: [...currentDeckObj.cards],
-      description: currentDeckObj.description || '',
+      name: deckToSave.deckName,
+      faction: deckToSave.faction,
+      version: deckToSave.deckVersion,
+      cards: [...deckToSave.cards],
+      description: deckToSave.description || '',
     };
 
-    showNotification(`デッキ「${currentDeckObj.deckName} (${currentDeckObj.deckVersion})」を保存しました。`, 'SUCCESS');
+    showNotification(`デッキ「${deckToSave.deckName}」を保存しました！`, 'SUCCESS');
   };
 
-  // Revert changes to last saved state
-  const handleRevertChanges = () => {
-    if (window.confirm('最後に保存した状態に戻しますか？現在の未保存の編集内容は破棄されます。')) {
+  // Revert changes
+  const handleRevert = () => {
+    if (window.confirm('最後に保存した状態に戻しますか？未保存の編集内容は破棄されます。')) {
       const snap = initialSnapshotRef.current;
       setDeckName(snap.name);
       setDeckFaction(snap.faction);
@@ -289,72 +345,59 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
   };
 
   // Clear all cards
-  const handleClearDeck = () => {
-    if (window.confirm('デッキの全カードを削除して空にしますか？')) {
+  const handleClearAllCards = () => {
+    if (window.confirm('デッキのカードをすべて削除して空にしますか？')) {
       setDeckCards([]);
       showNotification('デッキの全カードを削除しました。', 'INFO');
     }
   };
 
-  // Return to Deck List with unsaved check
-  const handleReturnToList = () => {
-    if (isDirty) {
-      if (!window.confirm('未保存の変更があります。変更を破棄してデッキ一覧に戻りますか？')) {
-        return;
-      }
-    }
-    setViewMode('LIST');
-  };
-
-  // --------------------------------------------------------------------------
-  // Card Pool & Deck Manipulation
-  // --------------------------------------------------------------------------
-
-  // Count copies in current deck
-  const cardCounts: Record<string, number> = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const cardId of deckCards) {
-      counts[cardId] = (counts[cardId] || 0) + 1;
-    }
-    return counts;
-  }, [deckCards]);
-
-  const addCard = (cardId: string, amount: number = 1) => {
+  // Add card to deck (max 4 per card, max 40 in deck)
+  const handleAddCard = (cardId: string, amount: number = 1) => {
     const currentCount = cardCounts[cardId] || 0;
     const canAdd = Math.min(amount, 4 - currentCount, 40 - deckCards.length);
-    if (canAdd <= 0) return;
+    if (canAdd <= 0) {
+      if (deckCards.length >= 40) {
+        showNotification('デッキは最大40枚です。', 'ERROR');
+      } else if (currentCount >= 4) {
+        showNotification('同名カードは最大4枚までです。', 'ERROR');
+      }
+      return;
+    }
 
     const toAdd = Array(canAdd).fill(cardId);
-    setDeckCards([...deckCards, ...toAdd]);
+    setDeckCards((prev) => [...prev, ...toAdd]);
   };
 
-  const removeCard = (cardId: string, amount: number = 1) => {
+  // Remove card from deck
+  const handleRemoveCard = (cardId: string, amount: number = 1) => {
     let toRemove = amount;
-    const updated = [...deckCards];
-    for (let i = updated.length - 1; i >= 0 && toRemove > 0; i--) {
-      if (updated[i] === cardId) {
-        updated.splice(i, 1);
-        toRemove--;
+    setDeckCards((prev) => {
+      const updated = [...prev];
+      for (let i = updated.length - 1; i >= 0 && toRemove > 0; i--) {
+        if (updated[i] === cardId) {
+          updated.splice(i, 1);
+          toRemove--;
+        }
       }
-    }
-    setDeckCards(updated);
+      return updated;
+    });
   };
 
-  // --------------------------------------------------------------------------
-  // JSON Export & Import
-  // --------------------------------------------------------------------------
-
+  // Export JSON
   const handleExportJSON = (targetDeck: Deck = currentDeckObj) => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(targetDeck, null, 2));
+    const dataStr =
+      'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(targetDeck, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute('href', dataStr);
     downloadAnchor.setAttribute('download', `${targetDeck.deckName}_${targetDeck.deckVersion}.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
-    showNotification(`デッキ「${targetDeck.deckName}」をJSON形式でエクスポートしました。`, 'SUCCESS');
+    showNotification(`デッキ「${targetDeck.deckName}」をJSON出力しました。`, 'SUCCESS');
   };
 
+  // Import JSON
   const handleImportJSONClick = () => {
     fileInputRef.current?.click();
   };
@@ -369,17 +412,20 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
         const text = event.target?.result as string;
         const parsed = JSON.parse(text);
 
-        // Validation
         if (!parsed || typeof parsed !== 'object') throw new Error('不正なJSON形式です。');
         if (!Array.isArray(parsed.cards)) throw new Error('cardsフィールドが配列ではありません。');
 
-        // Check if cards exist in pool
-        const validCards = parsed.cards.filter((cid: any) => typeof cid === 'string' && getCardById(cid) !== undefined);
+        const validCards = parsed.cards.filter(
+          (cid: any) => typeof cid === 'string' && getCardById(cid) !== undefined
+        );
         if (validCards.length === 0) throw new Error('有効なカードIDが含まれていません。');
 
         const newDeck: Deck = {
           deckId: generateNewDeckId(),
-          deckName: typeof parsed.deckName === 'string' ? `${parsed.deckName} (インポート)` : 'インポートデッキ',
+          deckName:
+            typeof parsed.deckName === 'string'
+              ? `${parsed.deckName} (インポート)`
+              : 'インポートデッキ',
           faction: (['RED', 'BLUE', 'GREEN', 'HOLY', 'DARK', 'NEUTRAL'].includes(parsed.faction)
             ? parsed.faction
             : 'RED') as FactionCode,
@@ -388,11 +434,15 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
           cardPoolVersion: CARD_POOL_VERSION,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          description: typeof parsed.description === 'string' ? parsed.description : 'JSONファイルからインポート',
+          description:
+            typeof parsed.description === 'string'
+              ? parsed.description
+              : 'JSONファイルからインポート',
         };
 
         onSaveCustomDeck(newDeck);
-        showNotification(`デッキ「${newDeck.deckName}」をインポートして保存しました！`, 'SUCCESS');
+        loadDeckIntoEditor(newDeck, false);
+        showNotification(`デッキ「${newDeck.deckName}」をインポートして読み込みました！`, 'SUCCESS');
       } catch (err: any) {
         showNotification(`インポート失敗: ${err.message || 'ファイルが壊れています'}`, 'ERROR');
       } finally {
@@ -402,10 +452,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
     reader.readAsText(file);
   };
 
-  // --------------------------------------------------------------------------
   // Filtered & Sorted Card Pool
-  // --------------------------------------------------------------------------
-
   const filteredAndSortedPool = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
 
@@ -423,7 +470,8 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
         const matchClass = card.classification ? card.classification.toLowerCase().includes(q) : false;
         const matchType = card.cardType.toLowerCase().includes(q);
         const matchFaction = card.factionName.toLowerCase().includes(q);
-        return matchName || matchEffects || matchRace || matchClass || matchType || matchFaction;
+        const matchId = card.cardId.toLowerCase().includes(q);
+        return matchName || matchEffects || matchRace || matchClass || matchType || matchFaction || matchId;
       }
       return true;
     });
@@ -448,10 +496,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
     });
   }, [searchQuery, filterFaction, filterType, filterCost, sortBy, cardCounts]);
 
-  // --------------------------------------------------------------------------
   // Deck Analytics
-  // --------------------------------------------------------------------------
-
   const analytics = useMemo(() => {
     const manaCurve: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0 };
     let unitCount = 0;
@@ -469,7 +514,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
     for (const cardId of deckCards) {
       const card = getCardById(cardId);
       if (!card) continue;
-      
+
       const costKey = Math.min(Math.max(card.cost, 1), 7);
       manaCurve[costKey] = (manaCurve[costKey] || 0) + 1;
       totalCost += card.cost;
@@ -517,302 +562,17 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
     };
   }, [deckCards]);
 
-  // ==========================================================================
-  // RENDER: 1. DECK MANAGER LIST VIEW
-  // ==========================================================================
-  if (viewMode === 'LIST') {
-    return (
-      <div id="deck-manager-view" className="max-w-6xl mx-auto space-y-5 animate-fade-in pb-8">
-        {/* Hidden File Input for JSON Import */}
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileImport}
-          accept=".json,application/json"
-          className="hidden"
-        />
-
-        {/* Top Notification Toast */}
-        {notification && (
-          <div
-            className={`fixed top-4 right-4 z-50 px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 text-xs font-bold animate-fade-in border ${
-              notification.type === 'SUCCESS'
-                ? 'bg-emerald-950/95 border-emerald-500 text-emerald-200'
-                : notification.type === 'ERROR'
-                ? 'bg-rose-950/95 border-rose-500 text-rose-200'
-                : 'bg-stone-900/95 border-stone-600 text-stone-200'
-            }`}
-          >
-            {notification.type === 'SUCCESS' ? (
-              <CheckCircle className="w-4 h-4 text-emerald-400" />
-            ) : notification.type === 'ERROR' ? (
-              <AlertTriangle className="w-4 h-4 text-rose-400" />
-            ) : (
-              <Sparkles className="w-4 h-4 text-amber-400" />
-            )}
-            <span>{notification.message}</span>
-          </div>
-        )}
-
-        {/* Header Ribbon & Global Actions */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-stone-900/90 border border-stone-800 rounded-2xl p-4 shadow-lg">
-          <div>
-            <h2 className="text-lg font-black text-white flex items-center gap-2">
-              <Layers className="w-5 h-5 text-amber-400" />
-              <span>デッキ構築・デッキ管理</span>
-            </h2>
-            <p className="text-xs text-stone-400 mt-0.5">
-              保存済みデッキの編集・改良、新規デッキ作成、複製、対戦・検証への連携
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => handleCreateNewDeck()}
-              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all"
-            >
-              <Plus className="w-4 h-4" />
-              <span>新しいデッキを作成</span>
-            </button>
-
-            <button
-              onClick={handleImportJSONClick}
-              className="px-3 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white border border-stone-700 text-xs font-bold flex items-center gap-1.5 transition-colors"
-              title="JSONファイルを読み込んで新規登録"
-            >
-              <Upload className="w-4 h-4" />
-              <span className="hidden xs:inline">JSONインポート</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Section 1: Saved Custom Decks */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-black text-amber-300 flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4 text-amber-400" />
-              <span>マイデッキ (カスタムデッキ) ({customDecks.length}件)</span>
-            </h3>
-            <span className="text-[11px] text-stone-500">
-              タップして編集・改良できます
-            </span>
-          </div>
-
-          {customDecks.length === 0 ? (
-            <div className="bg-stone-900/50 border border-dashed border-stone-800 rounded-2xl p-8 text-center space-y-3">
-              <div className="w-12 h-12 rounded-full bg-stone-800/80 flex items-center justify-center mx-auto text-stone-500">
-                <FileText className="w-6 h-6" />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-stone-300">保存されたマイデッキはありません</p>
-                <p className="text-xs text-stone-500 mt-1">
-                  「新しいデッキを作成」または下の「プリセット」をコピーして最初のデッキを構築しましょう。
-                </p>
-              </div>
-              <button
-                onClick={() => handleCreateNewDeck()}
-                className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs inline-flex items-center gap-1.5 shadow-md"
-              >
-                <Plus className="w-4 h-4" />
-                <span>新規デッキを作成</span>
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {customDecks.map((deck) => {
-                const val = validateDeck(deck);
-                const updatedDate = deck.updatedAt
-                  ? new Date(deck.updatedAt).toLocaleDateString('ja-JP', {
-                      year: 'numeric',
-                      month: '2-digit',
-                      day: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })
-                  : '未記録';
-
-                return (
-                  <div
-                    key={deck.deckId}
-                    className="bg-stone-900/90 hover:bg-stone-900 border border-stone-800 hover:border-amber-400/60 rounded-2xl p-3.5 shadow-md transition-all flex flex-col justify-between space-y-3 group"
-                  >
-                    {/* Top Row: Title & Faction */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className={`w-2.5 h-2.5 rounded-full ${
-                              deck.faction === 'RED'
-                                ? 'bg-red-500'
-                                : deck.faction === 'BLUE'
-                                ? 'bg-sky-500'
-                                : deck.faction === 'GREEN'
-                                ? 'bg-emerald-500'
-                                : deck.faction === 'HOLY'
-                                ? 'bg-amber-300'
-                                : deck.faction === 'DARK'
-                                ? 'bg-purple-500'
-                                : 'bg-stone-400'
-                            }`}
-                          />
-                          <h4 className="font-black text-sm text-white truncate" title={deck.deckName}>
-                            {deck.deckName}
-                          </h4>
-                        </div>
-                        <div className="flex items-center gap-2 text-[10px] text-stone-400 mt-1 font-mono">
-                          <span className="text-amber-400 font-bold">{deck.deckVersion || 'v1.0'}</span>
-                          <span>•</span>
-                          <span>更新: {updatedDate}</span>
-                        </div>
-                      </div>
-
-                      {/* Card Count Badge */}
-                      <span
-                        className={`text-xs font-mono font-bold px-2 py-0.5 rounded-lg shrink-0 ${
-                          val.valid
-                            ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                            : 'bg-rose-950 text-rose-300 border border-rose-800'
-                        }`}
-                      >
-                        {deck.cards.length} / 40
-                      </span>
-                    </div>
-
-                    {/* Deck Description */}
-                    {deck.description && (
-                      <p className="text-[11px] text-stone-400 line-clamp-2 leading-relaxed">
-                        {deck.description}
-                      </p>
-                    )}
-
-                    {/* Action Bar */}
-                    <div className="pt-2 border-t border-stone-800/80 flex items-center justify-between gap-1.5">
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleOpenEditDeck(deck)}
-                          className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                          <span>編集</span>
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            if (onStartBattleWithDeck) onStartBattleWithDeck(deck);
-                            else onTestDeck(deck);
-                          }}
-                          disabled={!val.valid}
-                          className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 disabled:opacity-40 transition-all"
-                          title="このデッキで対戦モードを開始"
-                        >
-                          <Play className="w-3.5 h-3.5" />
-                          <span>対戦</span>
-                        </button>
-                      </div>
-
-                      <div className="flex items-center gap-1 text-stone-400">
-                        <button
-                          onClick={() => handleDuplicateCustomDeck(deck)}
-                          className="p-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 hover:text-white transition-colors"
-                          title="デッキを複製"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-
-                        <button
-                          onClick={() => handleExportJSON(deck)}
-                          className="p-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 hover:text-white transition-colors"
-                          title="JSONエクスポート"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                        </button>
-
-                        <button
-                          onClick={() => handleDeleteCustomDeck(deck)}
-                          className="p-1.5 rounded-lg bg-stone-800 hover:bg-rose-950 hover:text-rose-300 transition-colors"
-                          title="デッキを削除"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Section 2: Preset Decks (Read-only / Copyable) */}
-        <div className="space-y-3 pt-4 border-t border-stone-800">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-black text-stone-300 flex items-center gap-1.5">
-              <Layers className="w-4 h-4 text-stone-400" />
-              <span>公式プリセットデッキ ({PRESET_DECKS.length}件)</span>
-            </h3>
-            <span className="text-[11px] text-stone-500">
-              コピーして新規デッキとして自由にカスタマイズ可能です
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {PRESET_DECKS.map((preset) => (
-              <div
-                key={preset.deckId}
-                className="bg-stone-950/80 border border-stone-800/90 rounded-2xl p-3.5 shadow-sm flex flex-col justify-between space-y-3"
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h4 className="font-bold text-sm text-stone-200">{preset.deckName}</h4>
-                      <span className="text-[10px] font-mono text-stone-500">
-                        {preset.faction} • {preset.deckVersion}
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-stone-900 border border-stone-800 text-stone-400">
-                      公式プリセット
-                    </span>
-                  </div>
-                  {preset.description && (
-                    <p className="text-[11px] text-stone-400 mt-2 line-clamp-2 leading-relaxed">
-                      {preset.description}
-                    </p>
-                  )}
-                </div>
-
-                <div className="pt-2 border-t border-stone-900 flex items-center justify-between gap-2">
-                  <button
-                    onClick={() => handleCopyPreset(preset)}
-                    className="px-2.5 py-1.5 rounded-lg bg-stone-800 hover:bg-amber-500 hover:text-stone-950 text-stone-200 font-bold text-xs flex items-center gap-1 transition-all"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>コピーして編集</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      if (onStartBattleWithDeck) onStartBattleWithDeck(preset);
-                      else onTestDeck(preset);
-                    }}
-                    className="px-2.5 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 text-stone-300 border border-stone-700 font-bold text-xs flex items-center gap-1 transition-colors"
-                  >
-                    <Play className="w-3.5 h-3.5" />
-                    <span>対戦</span>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ==========================================================================
-  // RENDER: 2. DECK EDIT WORKSPACE
-  // ==========================================================================
   return (
-    <div id="deck-builder-workspace" className="max-w-7xl mx-auto space-y-3 animate-fade-in pb-6">
+    <div id="integrated-deck-builder" className="max-w-7xl mx-auto space-y-3 animate-fade-in pb-8">
+      {/* Hidden File Input for JSON Import */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileImport}
+        accept=".json,application/json"
+        className="hidden"
+      />
+
       {/* Top Notification Toast */}
       {notification && (
         <div
@@ -825,52 +585,91 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
           }`}
         >
           {notification.type === 'SUCCESS' ? (
-            <CheckCircle className="w-4 h-4 text-emerald-400" />
+            <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
           ) : notification.type === 'ERROR' ? (
-            <AlertTriangle className="w-4 h-4 text-rose-400" />
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
           ) : (
-            <Sparkles className="w-4 h-4 text-amber-400" />
+            <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
           )}
           <span>{notification.message}</span>
         </div>
       )}
 
-      {/* Top Header & Navigation Bar */}
-      <div className="bg-stone-900 border border-stone-800 rounded-2xl p-3 shadow-lg flex flex-wrap items-center justify-between gap-3">
-        {/* Left: Back to List & Deck Title Input */}
-        <div className="flex items-center gap-2.5 flex-1 min-w-0">
+      {/* ============================================================ */}
+      {/* 1. TOP HEADER & DECK SELECTION WORKSPACE BAR */}
+      {/* ============================================================ */}
+      <div className="bg-stone-900/95 border border-stone-800 rounded-2xl p-3 shadow-lg flex flex-wrap items-center justify-between gap-2.5">
+        {/* Left: Deck Selector Dropdown & Quick Actions */}
+        <div className="flex items-center gap-2 flex-1 min-w-[260px]">
+          <div className="relative flex-1 max-w-[280px]">
+            <select
+              value={activeDeckId}
+              onChange={(e) => handleSelectDeck(e.target.value)}
+              className="w-full bg-stone-950 border border-stone-700 hover:border-amber-500 focus:border-amber-500 rounded-xl pl-3 pr-8 py-1.5 text-xs font-black text-white appearance-none cursor-pointer"
+            >
+              <optgroup label="マイデッキ (カスタム)">
+                {customDecks.map((d) => (
+                  <option key={d.deckId} value={d.deckId}>
+                    {d.deckName} ({d.deckVersion || 'v1.0'}) [{d.cards.length}枚]
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="公式プリセット">
+                {PRESET_DECKS.map((p) => (
+                  <option key={p.deckId} value={p.deckId}>
+                    [公式] {p.deckName} ({p.deckVersion})
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+            <ChevronDown className="w-4 h-4 text-stone-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+
           <button
-            onClick={handleReturnToList}
-            className="p-1.5 rounded-xl bg-stone-950 hover:bg-stone-800 text-stone-300 border border-stone-800 hover:border-amber-400 transition-colors shrink-0"
-            title="デッキ一覧へ戻る"
+            onClick={() => handleCreateNewDeck()}
+            className="p-1.5 rounded-xl bg-stone-950 hover:bg-stone-800 text-amber-400 hover:text-amber-300 border border-stone-800 hover:border-amber-500/80 transition-colors shadow-xs"
+            title="新しい空のデッキを作成"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <Plus className="w-4 h-4" />
           </button>
 
-          <div className="flex-1 min-w-0 flex items-center gap-2">
-            <input
-              type="text"
-              value={deckName}
-              onChange={(e) => setDeckName(e.target.value)}
-              placeholder="デッキ名を入力..."
-              className="bg-stone-950 border border-stone-700 focus:border-amber-500 rounded-xl px-3 py-1 text-sm font-black text-white w-full max-w-[220px] sm:max-w-[280px]"
-            />
+          <button
+            onClick={() => handleDuplicateDeckAction(currentDeckObj)}
+            className="p-1.5 rounded-xl bg-stone-950 hover:bg-stone-800 text-stone-300 hover:text-white border border-stone-800 transition-colors shadow-xs"
+            title="現在のデッキを複製"
+          >
+            <Copy className="w-4 h-4" />
+          </button>
 
-            {/* Unsaved status badge */}
-            {isDirty ? (
-              <span className="px-2 py-0.5 rounded-full bg-amber-950/90 border border-amber-500 text-amber-300 text-[10px] font-bold shrink-0 animate-pulse">
-                ● 未保存
-              </span>
-            ) : (
-              <span className="px-2 py-0.5 rounded-full bg-emerald-950/90 border border-emerald-600 text-emerald-300 text-[10px] font-bold shrink-0">
-                ✓ 保存済み
-              </span>
-            )}
-          </div>
+          {!isPresetSource && customDecks.some((d) => d.deckId === activeDeckId) && (
+            <button
+              onClick={() => handleDeleteDeckAction(activeDeckId)}
+              className="p-1.5 rounded-xl bg-stone-950 hover:bg-rose-950 text-stone-400 hover:text-rose-300 border border-stone-800 transition-colors shadow-xs"
+              title="このマイデッキを削除"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+
+          <button
+            onClick={handleImportJSONClick}
+            className="p-1.5 rounded-xl bg-stone-950 hover:bg-stone-800 text-stone-300 hover:text-white border border-stone-800 transition-colors shadow-xs"
+            title="JSONファイルをインポート"
+          >
+            <Upload className="w-4 h-4" />
+          </button>
         </div>
 
-        {/* Center: Deck Settings (Faction, Version) */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Center: Deck Name & Faction Inputs */}
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <input
+            type="text"
+            value={deckName}
+            onChange={(e) => setDeckName(e.target.value)}
+            placeholder="デッキ名..."
+            className="bg-stone-950 border border-stone-700 focus:border-amber-500 rounded-xl px-2.5 py-1 text-xs font-black text-white w-36 sm:w-48"
+          />
+
           <select
             value={deckFaction}
             onChange={(e) => setDeckFaction(e.target.value as FactionCode)}
@@ -884,23 +683,43 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
             <option value="NEUTRAL">無/混色</option>
           </select>
 
-          <input
-            type="text"
-            value={deckVersion}
-            onChange={(e) => setDeckVersion(e.target.value)}
-            className="bg-stone-950 border border-stone-700 rounded-xl px-1.5 py-1 text-xs font-mono font-bold text-amber-300 w-16 text-center focus:outline-none"
-            placeholder="v1.0"
-            title="デッキバージョン"
-          />
+          {/* Dirty Status Badge */}
+          {isDirty ? (
+            <span className="px-2 py-0.5 rounded-full bg-amber-950/90 border border-amber-500 text-amber-300 text-[10px] font-bold shrink-0 animate-pulse">
+              ● 未保存
+            </span>
+          ) : (
+            <span className="px-2 py-0.5 rounded-full bg-emerald-950/90 border border-emerald-600 text-emerald-300 text-[10px] font-bold shrink-0">
+              ✓ 保存済
+            </span>
+          )}
         </div>
 
-        {/* Right: Actions (Save, Test, Revert, Export, Clear) */}
+        {/* Right: Save & Battle Action Buttons */}
         <div className="flex items-center gap-1.5 shrink-0">
+          {isDirty && (
+            <button
+              onClick={handleRevert}
+              className="p-1.5 rounded-xl bg-stone-950 hover:bg-stone-800 text-stone-400 hover:text-amber-300 border border-stone-800 transition-colors"
+              title="未保存の変更を破棄"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+          )}
+
           <button
-            onClick={handleSave}
+            onClick={() => handleExportJSON(currentDeckObj)}
+            className="p-1.5 rounded-xl bg-stone-950 hover:bg-stone-800 text-stone-400 hover:text-white border border-stone-800 transition-colors"
+            title="JSON出力"
+          >
+            <Download className="w-3.5 h-3.5" />
+          </button>
+
+          <button
+            onClick={handleSaveDeck}
             disabled={!validation.valid}
             className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black text-xs flex items-center gap-1 shadow-md disabled:opacity-40 transition-all active:scale-95"
-            title="変更を保存"
+            title="デッキを保存"
           >
             <Save className="w-3.5 h-3.5" />
             <span>保存</span>
@@ -908,56 +727,31 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
 
           <button
             onClick={() => {
-              handleSave();
+              handleSaveDeck();
               if (onStartBattleWithDeck) onStartBattleWithDeck(currentDeckObj);
               else onTestDeck(currentDeckObj);
             }}
             disabled={!validation.valid}
-            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 shadow-md disabled:opacity-40 transition-all"
-            title="保存して対戦を開始"
+            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center gap-1 shadow-md disabled:opacity-40 transition-all active:scale-95"
+            title="このデッキで対戦モードを開始"
           >
             <Play className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">対戦/検証</span>
-          </button>
-
-          {isDirty && (
-            <button
-              onClick={handleRevertChanges}
-              className="p-1.5 rounded-xl bg-stone-950 hover:bg-stone-800 text-stone-400 hover:text-amber-300 border border-stone-800 transition-colors"
-              title="変更を破棄して直前の保存状態に戻す"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </button>
-          )}
-
-          <button
-            onClick={() => handleExportJSON(currentDeckObj)}
-            className="p-1.5 rounded-xl bg-stone-950 hover:bg-stone-800 text-stone-400 hover:text-white border border-stone-800 transition-colors"
-            title="JSON形式でエクスポート"
-          >
-            <Download className="w-4 h-4" />
-          </button>
-
-          <button
-            onClick={handleClearDeck}
-            className="p-1.5 rounded-xl bg-stone-950 hover:bg-rose-950 text-stone-400 hover:text-rose-300 border border-stone-800 transition-colors"
-            title="デッキのカードを全クリア"
-          >
-            <Trash2 className="w-4 h-4" />
+            <span>対戦へ</span>
           </button>
         </div>
       </div>
 
-      {/* Top Deck Stats & Quick Card Count Indicator */}
-      <div className="bg-stone-900/90 border border-stone-800 rounded-2xl p-2.5 flex items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-2 sm:gap-4 overflow-x-auto">
-          {/* Deck Count */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-stone-400 font-bold">枚数:</span>
+      {/* ============================================================ */}
+      {/* 2. SUB-BAR: CARD COUNT STATUS & MOBILE TAB SWITCHER */}
+      {/* ============================================================ */}
+      <div className="bg-stone-900/90 border border-stone-800 rounded-2xl p-2.5 flex items-center justify-between gap-2 text-xs">
+        <div className="flex items-center gap-2 sm:gap-4 overflow-x-auto min-w-0">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-stone-400 font-bold">デッキ枚数:</span>
             <span
-              className={`font-mono font-black text-sm px-2 py-0.5 rounded-lg ${
+              className={`font-mono font-black text-sm px-2.5 py-0.5 rounded-lg ${
                 deckCards.length === 40
-                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-700'
+                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-700 shadow-sm'
                   : 'bg-rose-950 text-rose-300 border border-rose-700'
               }`}
             >
@@ -965,21 +759,20 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
             </span>
           </div>
 
-          {/* Validation Status */}
           {validation.valid ? (
-            <div className="flex items-center gap-1 text-emerald-400 font-bold text-[11px] hidden sm:flex">
-              <CheckCircle className="w-3.5 h-3.5" />
+            <div className="flex items-center gap-1 text-emerald-400 font-bold text-[11px] truncate">
+              <CheckCircle className="w-3.5 h-3.5 shrink-0" />
               <span>規定を満たしています (40枚/同名最大4枚)</span>
             </div>
           ) : (
-            <div className="flex items-center gap-1 text-rose-400 font-bold text-[11px] truncate max-w-[260px] sm:max-w-none">
+            <div className="flex items-center gap-1 text-rose-400 font-bold text-[11px] truncate">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
               <span>{validation.errors[0]}</span>
             </div>
           )}
         </div>
 
-        {/* Mobile Tab Switcher (Visible on mobile/tablet) */}
+        {/* Mobile Tab Switcher */}
         <div className="flex lg:hidden items-center gap-1 bg-stone-950 p-1 rounded-xl border border-stone-800 shrink-0">
           <button
             onClick={() => setMobileTab('POOL')}
@@ -987,7 +780,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
               mobileTab === 'POOL' ? 'bg-amber-500 text-stone-950' : 'text-stone-400 hover:text-white'
             }`}
           >
-            カード
+            カード一覧
           </button>
           <button
             onClick={() => setMobileTab('DECK')}
@@ -1000,7 +793,9 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
           <button
             onClick={() => setMobileTab('ANALYSIS')}
             className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-              mobileTab === 'ANALYSIS' ? 'bg-amber-500 text-stone-950' : 'text-stone-400 hover:text-white'
+              mobileTab === 'ANALYSIS'
+                ? 'bg-amber-500 text-stone-950'
+                : 'text-stone-400 hover:text-white'
             }`}
           >
             分析
@@ -1008,29 +803,32 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
         </div>
       </div>
 
-      {/* Main Responsive Grid Layout */}
+      {/* ============================================================ */}
+      {/* 3. MAIN WORKSPACE (SIDE-BY-SIDE ON PC, TABBED ON MOBILE) */}
+      {/* ============================================================ */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
-        {/* ========================================================== */}
-        {/* LEFT COLUMN (4 cols on Desktop): Current Deck List & Analysis */}
-        {/* ========================================================== */}
+        {/* ---------------------------------------------------------- */}
+        {/* LEFT COLUMN: ACTIVE DECK LIST & STATS (4 cols on Desktop)  */}
+        {/* ---------------------------------------------------------- */}
         <div
           className={`lg:col-span-4 space-y-3.5 ${
             mobileTab === 'POOL' ? 'hidden lg:block' : 'block'
           }`}
         >
-          {/* 1. Adopted Cards List Panel */}
+          {/* Adopted Cards Panel */}
           <div
             className={`bg-stone-900 border border-stone-800 rounded-2xl p-3 shadow-lg flex flex-col ${
               mobileTab === 'ANALYSIS' ? 'hidden lg:flex' : 'flex'
-            } h-[420px] lg:h-[480px]`}
+            } h-[460px] lg:h-[540px]`}
           >
             <div className="flex items-center justify-between pb-2 border-b border-stone-800 mb-2">
-              <span className="text-xs font-black text-stone-200">
-                採用カード一覧 ({Object.keys(cardCounts).length}種 / {deckCards.length}枚)
+              <span className="text-xs font-black text-stone-200 flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-amber-400" />
+                <span>採用カード ({Object.keys(cardCounts).length}種 / {deckCards.length}枚)</span>
               </span>
               <button
-                onClick={handleClearDeck}
-                className="text-[10px] text-stone-500 hover:text-rose-400"
+                onClick={handleClearAllCards}
+                className="text-[10px] text-stone-500 hover:text-rose-400 transition-colors"
               >
                 全解除
               </button>
@@ -1038,8 +836,9 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
 
             <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
               {Object.keys(cardCounts).length === 0 ? (
-                <div className="text-center text-xs text-stone-600 py-20">
-                  右側のカードプールからカードをタップして追加してください
+                <div className="h-full flex flex-col items-center justify-center text-center text-xs text-stone-500 py-16 space-y-2">
+                  <Layers className="w-8 h-8 text-stone-700 stroke-1" />
+                  <p>右側のカード一覧からカードの「＋」をタップしてデッキへ追加してください</p>
                 </div>
               ) : (
                 Object.entries(cardCounts)
@@ -1056,41 +855,53 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
                     return (
                       <div
                         key={cardId}
-                        className="flex items-center justify-between p-1.5 sm:p-2 bg-stone-950 rounded-xl border border-stone-800/80 hover:border-stone-700 transition-colors"
+                        className="bg-stone-950/90 hover:bg-stone-950 border border-stone-800/80 hover:border-amber-400/40 rounded-xl p-1.5 flex items-center justify-between gap-1.5 transition-all group"
                       >
-                        {/* Cost + Name */}
+                        {/* Cost & Name & Quick Inspect */}
                         <div
-                          onClick={() => onInspectCard(card)}
-                          className="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0 mr-1.5"
-                          title="タップで詳細確認"
+                          onClick={() => setSelectedCardForModal(card)}
+                          className="flex items-center gap-1.5 flex-1 min-w-0 cursor-pointer"
                         >
-                          <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-300 font-bold text-xs flex items-center justify-center shrink-0">
+                          <span className="w-4 h-4 rounded-full bg-stone-900 border border-amber-500/80 text-[9px] font-black text-amber-300 flex items-center justify-center font-mono shrink-0">
                             {card.cost}
                           </span>
-                          <div className="truncate text-xs font-bold text-stone-200">
-                            {card.name}
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-xs font-bold text-stone-200 truncate group-hover:text-amber-200">
+                              {card.name}
+                            </span>
+                            <span className="text-[9px] text-stone-500 font-mono">
+                              {card.cardType === 'UNIT'
+                                ? 'ユニット'
+                                : card.cardType === 'EVOLVE_UNIT'
+                                ? '進化'
+                                : card.cardType === 'SPELL'
+                                ? 'スペル'
+                                : card.cardType === 'RUNE'
+                                ? 'ルーン'
+                                : 'ドメイン'}
+                            </span>
                           </div>
                         </div>
 
-                        {/* Plus / Minus count buttons */}
+                        {/* Count Modifiers (+ / -) */}
                         <div className="flex items-center gap-1 shrink-0">
                           <button
-                            onClick={() => removeCard(cardId, 1)}
-                            className="w-6 h-6 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 flex items-center justify-center text-xs font-bold active:scale-95"
-                            title="1枚削除"
+                            onClick={() => handleRemoveCard(cardId, 1)}
+                            className="w-5 h-5 rounded-lg bg-stone-900 hover:bg-rose-950 text-stone-400 hover:text-rose-300 border border-stone-800 flex items-center justify-center transition-colors active:scale-95"
+                            title="1枚減らす"
                           >
                             <Minus className="w-3 h-3" />
                           </button>
 
-                          <span className="w-5 text-center font-mono font-black text-xs text-amber-300">
+                          <span className="font-mono font-black text-xs w-5 text-center text-amber-300">
                             {count}
                           </span>
 
                           <button
-                            onClick={() => addCard(cardId, 1)}
+                            onClick={() => handleAddCard(cardId, 1)}
                             disabled={count >= 4 || deckCards.length >= 40}
-                            className="w-6 h-6 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 disabled:opacity-25 flex items-center justify-center text-xs font-bold active:scale-95"
-                            title="1枚追加"
+                            className="w-5 h-5 rounded-lg bg-stone-900 hover:bg-emerald-950 text-stone-400 hover:text-emerald-300 border border-stone-800 flex items-center justify-center disabled:opacity-30 transition-colors active:scale-95"
+                            title="1枚増やす"
                           >
                             <Plus className="w-3 h-3" />
                           </button>
@@ -1102,251 +913,265 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
             </div>
           </div>
 
-          {/* 2. Mini Analytics / Mana Curve Panel */}
+          {/* Quick Analytics & Mana Curve Panel */}
           <div
             className={`bg-stone-900 border border-stone-800 rounded-2xl p-3 shadow-lg space-y-2.5 ${
               mobileTab === 'DECK' ? 'hidden lg:block' : 'block'
             }`}
           >
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-black text-stone-200 flex items-center gap-1.5">
+            <div className="flex items-center justify-between pb-1.5 border-b border-stone-800">
+              <span className="text-xs font-black text-stone-200 flex items-center gap-1">
                 <BarChart2 className="w-3.5 h-3.5 text-amber-400" />
-                <span>コストカーブ & 構成分析</span>
+                <span>デッキ分析 & マナカーブ</span>
               </span>
               <span className="text-[10px] text-stone-400 font-mono">
-                平均COST: <strong className="text-amber-300">{analytics.avgCost}</strong>
+                平均コスト: <strong className="text-amber-300">{analytics.avgCost}</strong>
               </span>
             </div>
 
-            {/* Mana Curve Bars */}
-            <div className="grid grid-cols-7 gap-1.5 items-end h-16 pt-1">
+            {/* Mana Curve Visual Bars */}
+            <div className="grid grid-cols-7 gap-1 items-end h-16 pt-2">
               {[1, 2, 3, 4, 5, 6, 7].map((cost) => {
                 const count = analytics.manaCurve[cost] || 0;
-                const heightPct = Math.max(8, (count / analytics.maxCurve) * 100);
+                const heightPercent = Math.max((count / analytics.maxCurve) * 100, count > 0 ? 12 : 2);
+
                 return (
                   <div key={cost} className="flex flex-col items-center gap-0.5 h-full justify-end">
-                    <span className="text-[9px] font-mono font-bold text-stone-300">{count}</span>
-                    <div
-                      className="w-full bg-gradient-to-t from-amber-600 to-amber-400 rounded-t-sm transition-all"
-                      style={{ height: `${heightPct}%` }}
-                    />
-                    <span className="text-[9px] font-mono text-stone-500">{cost === 7 ? '7+' : cost}</span>
+                    <span className="text-[9px] font-mono text-stone-400">{count}</span>
+                    <div className="w-full bg-stone-950 rounded-t h-full flex items-end overflow-hidden">
+                      <div
+                        style={{ height: `${heightPercent}%` }}
+                        className={`w-full transition-all duration-300 rounded-t ${
+                          cost <= 2
+                            ? 'bg-emerald-500'
+                            : cost <= 4
+                            ? 'bg-sky-500'
+                            : cost <= 6
+                            ? 'bg-amber-500'
+                            : 'bg-rose-500'
+                        }`}
+                      />
+                    </div>
+                    <span className="text-[9px] font-mono font-bold text-stone-300">{cost === 7 ? '7+' : cost}</span>
                   </div>
                 );
               })}
             </div>
 
-            {/* Card Types Breakdown Grid */}
-            <div className="grid grid-cols-5 gap-1 text-center text-[10px] pt-1 border-t border-stone-800">
-              <div className="bg-stone-950 p-1 rounded-lg border border-stone-800/80">
-                <div className="text-stone-500">ユニット</div>
-                <div className="font-bold text-amber-300">{analytics.unitCount}</div>
+            {/* Breakdown Cards */}
+            <div className="grid grid-cols-3 gap-1.5 pt-1 text-[10px] text-stone-300">
+              <div className="bg-stone-950 p-1.5 rounded-lg border border-stone-800 text-center">
+                <span className="text-stone-500 block">ユニット</span>
+                <strong className="text-white text-xs">{analytics.unitCount + analytics.evolveCount}</strong>
               </div>
-              <div className="bg-stone-950 p-1 rounded-lg border border-stone-800/80">
-                <div className="text-stone-500">進化</div>
-                <div className="font-bold text-amber-400">{analytics.evolveCount}</div>
+              <div className="bg-stone-950 p-1.5 rounded-lg border border-stone-800 text-center">
+                <span className="text-stone-500 block">スペル/ルーン</span>
+                <strong className="text-white text-xs">{analytics.spellCount + analytics.runeCount}</strong>
               </div>
-              <div className="bg-stone-950 p-1 rounded-lg border border-stone-800/80">
-                <div className="text-stone-500">スペル</div>
-                <div className="font-bold text-sky-300">{analytics.spellCount}</div>
+              <div className="bg-stone-950 p-1.5 rounded-lg border border-stone-800 text-center">
+                <span className="text-stone-500 block">平均 ATK/DEF</span>
+                <strong className="text-amber-300 text-xs">{analytics.avgAtk} / {analytics.avgDef}</strong>
               </div>
-              <div className="bg-stone-950 p-1 rounded-lg border border-stone-800/80">
-                <div className="text-stone-500">ルーン</div>
-                <div className="font-bold text-purple-300">{analytics.runeCount}</div>
-              </div>
-              <div className="bg-stone-950 p-1 rounded-lg border border-stone-800/80">
-                <div className="text-stone-500">ドメイン</div>
-                <div className="font-bold text-amber-200">{analytics.domainCount}</div>
-              </div>
-            </div>
-
-            {/* Combat Stats Averages */}
-            <div className="flex items-center justify-around bg-stone-950/80 p-1.5 rounded-lg text-[10px] text-stone-400">
-              <span>平均ATK: <strong className="text-red-300 font-mono">{analytics.avgAtk}</strong></span>
-              <span>平均DEF: <strong className="text-sky-300 font-mono">{analytics.avgDef}</strong></span>
-              <span>平均BRK: <strong className="text-amber-300 font-mono">{analytics.avgBrk}</strong></span>
             </div>
           </div>
         </div>
 
-        {/* ========================================================== */}
-        {/* RIGHT COLUMN (8 cols on Desktop): Card Pool Explorer */}
-        {/* ========================================================== */}
+        {/* ---------------------------------------------------------- */}
+        {/* RIGHT COLUMN: CARD MASTER POOL (8 cols on Desktop)         */}
+        {/* ---------------------------------------------------------- */}
         <div
-          className={`lg:col-span-8 bg-stone-900 border border-stone-800 rounded-2xl p-3 sm:p-4 shadow-lg flex flex-col ${
-            mobileTab !== 'POOL' ? 'hidden lg:flex' : 'flex'
-          } h-[600px] lg:h-[680px]`}
+          className={`lg:col-span-8 space-y-3 ${
+            mobileTab !== 'POOL' ? 'hidden lg:block' : 'block'
+          }`}
         >
-          {/* Search, Filter & Sort Controls */}
-          <div className="space-y-2 pb-3 border-b border-stone-800 mb-3 shrink-0">
-            {/* Search Input & Sort Dropdown */}
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-500" />
+          {/* Card Pool Filters Bar */}
+          <div className="bg-stone-900 border border-stone-800 rounded-2xl p-2.5 shadow-lg space-y-2">
+            {/* Top Filter Row: Search & Faction Buttons */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-[160px]">
+                <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
-                  placeholder="カード名、効果、系統、種族、存在分類で検索..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-stone-950 border border-stone-700 rounded-xl pl-8 pr-7 py-1.5 text-xs text-stone-100 placeholder:text-stone-600 focus:outline-none focus:border-amber-500"
+                  placeholder="カード名、効果、種族、ID検索..."
+                  className="w-full bg-stone-950 border border-stone-700 rounded-xl pl-8 pr-2.5 py-1 text-xs text-white placeholder-stone-500 focus:outline-none focus:border-amber-500"
                 />
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-500 hover:text-white"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-500 hover:text-white"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
                 )}
               </div>
 
-              {/* Sort Selector */}
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as SortOption)}
-                className="bg-stone-950 border border-stone-700 rounded-xl px-2 py-1.5 text-xs font-bold text-stone-300 focus:outline-none focus:border-amber-500 shrink-0"
-              >
-                <option value="COST_ASC">コスト昇順</option>
-                <option value="COST_DESC">コスト降順</option>
-                <option value="NAME_ASC">名前順</option>
-                <option value="COUNT_DESC">採用枚数順</option>
-                <option value="TYPE">種類順</option>
-              </select>
+              {/* Faction Filter Buttons */}
+              <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+                {(['ALL', 'RED', 'BLUE', 'GREEN', 'HOLY', 'DARK', 'NEUTRAL'] as const).map((fac) => {
+                  const label =
+                    fac === 'ALL'
+                      ? '全属性'
+                      : fac === 'RED'
+                      ? '朱'
+                      : fac === 'BLUE'
+                      ? '蒼'
+                      : fac === 'GREEN'
+                      ? '翠'
+                      : fac === 'HOLY'
+                      ? '聖'
+                      : fac === 'DARK'
+                      ? '冥'
+                      : '無';
+
+                  return (
+                    <button
+                      key={fac}
+                      onClick={() => setFilterFaction(fac)}
+                      className={`px-2 py-1 rounded-lg text-xs font-bold transition-all shrink-0 ${
+                        filterFaction === fac
+                          ? fac === 'RED'
+                            ? 'bg-red-600 text-white shadow-sm'
+                            : fac === 'BLUE'
+                            ? 'bg-sky-600 text-white shadow-sm'
+                            : fac === 'GREEN'
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : fac === 'HOLY'
+                            ? 'bg-amber-500 text-stone-950 shadow-sm'
+                            : fac === 'DARK'
+                            ? 'bg-purple-600 text-white shadow-sm'
+                            : 'bg-stone-700 text-white shadow-sm'
+                          : 'bg-stone-950 text-stone-400 hover:text-stone-200 border border-stone-800'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* Faction Filter Pills */}
-            <div className="flex flex-wrap items-center gap-1 text-xs">
-              <span className="text-[10px] text-stone-500 mr-0.5">系統:</span>
-              {(['ALL', 'RED', 'BLUE', 'GREEN', 'HOLY', 'DARK', 'NEUTRAL'] as const).map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setFilterFaction(f)}
-                  className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition-all ${
-                    filterFaction === f
-                      ? 'bg-amber-500 text-stone-950'
-                      : 'bg-stone-950 text-stone-400 hover:text-white border border-stone-800'
-                  }`}
+            {/* Bottom Filter Row: Type, Cost, Sort */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-stone-800/80 text-xs">
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Type Filter */}
+                <select
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value)}
+                  className="bg-stone-950 border border-stone-700 rounded-lg px-2 py-0.5 text-xs text-stone-200"
                 >
-                  {f === 'ALL'
-                    ? '全'
-                    : f === 'RED'
-                    ? '朱'
-                    : f === 'BLUE'
-                    ? '蒼'
-                    : f === 'GREEN'
-                    ? '翠'
-                    : f === 'HOLY'
-                    ? '聖'
-                    : f === 'DARK'
-                    ? '冥'
-                    : '無'}
-                </button>
-              ))}
-            </div>
+                  <option value="ALL">全タイプ</option>
+                  <option value="UNIT">ユニット</option>
+                  <option value="EVOLVE_UNIT">進化ユニット</option>
+                  <option value="SPELL">スペル</option>
+                  <option value="RUNE">ルーン</option>
+                  <option value="DOMAIN">ドメイン</option>
+                </select>
 
-            {/* Card Type & Cost Filter Row */}
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-              <div className="flex flex-wrap items-center gap-1">
-                <span className="text-[10px] text-stone-500 mr-0.5">種類:</span>
-                {(['ALL', 'UNIT', 'EVOLVE_UNIT', 'SPELL', 'RUNE', 'DOMAIN'] as const).map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setFilterType(t)}
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                      filterType === t ? 'bg-stone-700 text-white' : 'text-stone-400 hover:text-white'
-                    }`}
-                  >
-                    {t === 'ALL'
-                      ? '全'
-                      : t === 'UNIT'
-                      ? 'ユニット'
-                      : t === 'EVOLVE_UNIT'
-                      ? '進化'
-                      : t === 'SPELL'
-                      ? 'スペル'
-                      : t === 'RUNE'
-                      ? 'ルーン'
-                      : 'ドメイン'}
-                  </button>
-                ))}
+                {/* Cost Filter */}
+                <select
+                  value={filterCost}
+                  onChange={(e) => setFilterCost(e.target.value)}
+                  className="bg-stone-950 border border-stone-700 rounded-lg px-2 py-0.5 text-xs text-stone-200"
+                >
+                  <option value="ALL">全コスト</option>
+                  <option value="1">コスト 1</option>
+                  <option value="2">コスト 2</option>
+                  <option value="3">コスト 3</option>
+                  <option value="4">コスト 4</option>
+                  <option value="5">コスト 5</option>
+                  <option value="6">コスト 6</option>
+                  <option value="7+">コスト 7+</option>
+                </select>
+
+                {/* Sort Option */}
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as SortOption)}
+                  className="bg-stone-950 border border-stone-700 rounded-lg px-2 py-0.5 text-xs text-stone-200"
+                >
+                  <option value="COST_ASC">コスト昇順</option>
+                  <option value="COST_DESC">コスト降順</option>
+                  <option value="NAME_ASC">名前順</option>
+                  <option value="COUNT_DESC">採用枚数順</option>
+                  <option value="TYPE">タイプ順</option>
+                </select>
               </div>
 
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-stone-500 mr-0.5">COST:</span>
-                {(['ALL', '1', '2', '3', '4', '5', '6', '7+'] as const).map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => setFilterCost(c)}
-                    className={`w-5 h-5 rounded flex items-center justify-center font-mono text-[10px] font-bold ${
-                      filterCost === c
-                        ? 'bg-amber-500 text-stone-950'
-                        : 'bg-stone-950 text-stone-400 hover:text-white border border-stone-800'
-                    }`}
-                  >
-                    {c === 'ALL' ? '全' : c}
-                  </button>
-                ))}
+              <div className="text-[11px] text-stone-400 font-mono">
+                表示: <strong className="text-amber-300">{filteredAndSortedPool.length}</strong> 件
               </div>
             </div>
           </div>
 
           {/* Cards Grid */}
-          <div className="flex-1 overflow-y-auto pr-1">
+          <div className="bg-stone-900 border border-stone-800 rounded-2xl p-3 shadow-lg min-h-[460px] lg:min-h-[540px]">
             {filteredAndSortedPool.length === 0 ? (
-              <div className="text-center text-xs text-stone-600 py-20">
-                該当するカードが見つかりませんでした
+              <div className="h-64 flex flex-col items-center justify-center text-stone-500 space-y-2">
+                <Search className="w-8 h-8 text-stone-600 stroke-1" />
+                <p className="text-xs">条件に合致するカードが見つかりませんでした。</p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-5 gap-2.5">
+              <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 xl:grid-cols-6 gap-2.5 sm:gap-3">
                 {filteredAndSortedPool.map((card) => {
-                  const countInDeck = cardCounts[card.cardId] || 0;
-                  const isMaxed = countInDeck >= 4 || deckCards.length >= 40;
+                  const adoptedCount = cardCounts[card.cardId] || 0;
+                  const isMax = adoptedCount >= 4 || deckCards.length >= 40;
 
                   return (
                     <div
                       key={card.cardId}
-                      className="relative group flex flex-col items-center"
+                      className="flex flex-col items-center space-y-1 group relative select-none"
                     >
-                      <CardItem
-                        card={card}
-                        size="sm"
-                        isInteractive={true}
-                        onInspect={onInspectCard}
-                        onClick={() => addCard(card.cardId, 1)}
-                      />
+                      {/* Card Visual Item */}
+                      <div
+                        onClick={() => setSelectedCardForModal(card)}
+                        className="cursor-pointer transition-transform duration-150 group-hover:scale-105 active:scale-95"
+                      >
+                        <CardItem
+                          card={card}
+                          size="xs"
+                          isInteractive={true}
+                          onInspect={() => setSelectedCardForModal(card)}
+                        />
+                      </div>
 
-                      {/* Quick Add & Count Controller floating pill */}
-                      <div className="w-full flex items-center justify-between px-1.5 py-0.5 bg-stone-950/95 border border-stone-800 rounded-lg mt-1 text-[10px] shadow-sm">
-                        <div className="flex items-center gap-0.5">
-                          <span className="font-mono font-bold text-amber-300">{countInDeck}</span>
-                          <span className="font-mono text-[8px] text-stone-500">/4</span>
-                        </div>
+                      {/* Adoption Badge & Add/Remove Buttons */}
+                      <div className="w-full flex items-center justify-between px-0.5 bg-stone-950/95 border border-stone-800 rounded-lg p-0.5 shadow-sm">
+                        {/* Decrement Button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveCard(card.cardId, 1);
+                          }}
+                          disabled={adoptedCount === 0}
+                          className="w-5 h-5 rounded bg-stone-900 hover:bg-rose-950 text-stone-400 hover:text-rose-300 flex items-center justify-center disabled:opacity-20 active:scale-90 transition-all"
+                          title="デッキから1枚削除"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
 
-                        <div className="flex items-center gap-1">
-                          {countInDeck > 0 && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                removeCard(card.cardId, 1);
-                              }}
-                              className="w-4 h-4 rounded bg-stone-800 hover:bg-stone-700 text-stone-300 flex items-center justify-center font-bold"
-                              title="1枚削除"
-                            >
-                              -
-                            </button>
-                          )}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              addCard(card.cardId, 1);
-                            }}
-                            disabled={isMaxed}
-                            className="w-4 h-4 rounded bg-amber-500 hover:bg-amber-400 disabled:opacity-25 text-stone-950 flex items-center justify-center font-bold"
-                            title="1枚追加"
-                          >
-                            +
-                          </button>
-                        </div>
+                        {/* Adopted Count Display */}
+                        <span
+                          className={`text-[11px] font-mono font-black px-1 ${
+                            adoptedCount > 0 ? 'text-amber-300' : 'text-stone-500'
+                          }`}
+                        >
+                          {adoptedCount} / 4
+                        </span>
+
+                        {/* Increment Button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAddCard(card.cardId, 1);
+                          }}
+                          disabled={isMax}
+                          className="w-5 h-5 rounded bg-amber-500 hover:bg-amber-400 text-stone-950 flex items-center justify-center disabled:opacity-20 disabled:bg-stone-800 disabled:text-stone-500 active:scale-90 transition-all shadow-xs"
+                          title="デッキへ1枚追加"
+                        >
+                          <Plus className="w-3 h-3 stroke-[2.5]" />
+                        </button>
                       </div>
                     </div>
                   );
@@ -1356,6 +1181,99 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
           </div>
         </div>
       </div>
+
+      {/* ============================================================ */}
+      {/* 4. MODAL: CARD DETAIL INSPECT MODAL IN BUILDER               */}
+      {/* ============================================================ */}
+      {selectedCardForModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/75 backdrop-blur-xs animate-fade-in"
+          onClick={() => setSelectedCardForModal(null)}
+        >
+          <div
+            className="bg-stone-900 border-2 border-stone-600 rounded-2xl w-full max-w-sm p-4 shadow-2xl space-y-3 relative text-stone-100 animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-stone-800 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-stone-950 border border-amber-400 flex items-center justify-center font-black text-amber-300 font-mono text-xs">
+                  {selectedCardForModal.cost}
+                </span>
+                <div>
+                  <h3 className="text-sm font-black text-white">{selectedCardForModal.name}</h3>
+                  <span className="text-[9px] text-stone-400 font-mono">
+                    {selectedCardForModal.cardId} • {selectedCardForModal.factionName}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedCardForModal(null)}
+                className="p-1 rounded-full text-stone-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Combat Stats if Unit */}
+            {(selectedCardForModal.cardType === 'UNIT' ||
+              selectedCardForModal.cardType === 'EVOLVE_UNIT') && (
+              <div className="grid grid-cols-3 gap-2 bg-stone-950 p-2 rounded-xl border border-stone-800 text-center font-mono">
+                <div>
+                  <span className="text-[9px] text-red-400 block font-bold">ATK</span>
+                  <span className="text-base font-black text-red-200">{selectedCardForModal.atk}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-sky-400 block font-bold">DEF</span>
+                  <span className="text-base font-black text-sky-200">{selectedCardForModal.def}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-amber-400 block font-bold">BRK</span>
+                  <span className="text-base font-black text-amber-200">{selectedCardForModal.brk}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Effects Text */}
+            <div className="bg-stone-950 p-2.5 rounded-xl border border-stone-800 text-xs leading-relaxed space-y-1">
+              <span className="text-[10px] font-bold text-amber-400 block">カード効果・能力</span>
+              <p className="text-stone-200 text-xs leading-relaxed whitespace-pre-wrap">
+                {selectedCardForModal.effectsText || '通常効果なし'}
+              </p>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-between pt-2 border-t border-stone-800">
+              <div className="text-xs text-stone-400 font-mono">
+                現在の採用: <strong className="text-amber-300">{cardCounts[selectedCardForModal.cardId] || 0}</strong> / 4枚
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleRemoveCard(selectedCardForModal.cardId, 1)}
+                  disabled={(cardCounts[selectedCardForModal.cardId] || 0) === 0}
+                  className="px-2.5 py-1 rounded-xl bg-stone-800 hover:bg-rose-950 text-stone-300 hover:text-rose-200 text-xs font-bold disabled:opacity-30 flex items-center gap-1"
+                >
+                  <Minus className="w-3.5 h-3.5" />
+                  <span>削除</span>
+                </button>
+
+                <button
+                  onClick={() => handleAddCard(selectedCardForModal.cardId, 1)}
+                  disabled={
+                    (cardCounts[selectedCardForModal.cardId] || 0) >= 4 ||
+                    deckCards.length >= 40
+                  }
+                  className="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-black disabled:opacity-30 flex items-center gap-1 shadow-md"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>デッキに追加</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -189,6 +189,27 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     };
   }, [deckAId, deckBId]);
 
+  // Global reset listener for app-switch, tab-switch, orientation change, or window blur
+  useEffect(() => {
+    const handleGlobalReset = () => {
+      setDragState(null);
+      setHoveredDropZone(null);
+      dragPointerIdRef.current = null;
+    };
+
+    window.addEventListener('blur', handleGlobalReset);
+    window.addEventListener('visibilitychange', handleGlobalReset);
+    window.addEventListener('orientationchange', handleGlobalReset);
+    window.addEventListener('pointercancel', handleGlobalReset);
+
+    return () => {
+      window.removeEventListener('blur', handleGlobalReset);
+      window.removeEventListener('visibilitychange', handleGlobalReset);
+      window.removeEventListener('orientationchange', handleGlobalReset);
+      window.removeEventListener('pointercancel', handleGlobalReset);
+    };
+  }, []);
+
   // Audio and Animation dispatcher
   const triggerActionFeedback = (action: Action, prevState?: GameState, nextState?: GameState) => {
     switch (action.type) {
