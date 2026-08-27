@@ -474,6 +474,47 @@ export class GameEngine {
       return actions;
     }
 
+
+    // 2.5 EFFECT RESOLUTION STEP
+    if (state.phase === 'EFFECT_RESOLUTION' && state.pendingEffect) {
+      const resolvingPlayer = this.getPlayer(state, state.pendingEffect.triggeringPlayerId);
+      
+      if (state.pendingEffect.effectType === 'C_03_ARCANA') {
+        for (const card of resolvingPlayer.hand) {
+          actions.push({
+            action: {
+              type: 'RESOLVE_EFFECT',
+              playerId: resolvingPlayer.playerId,
+              payload: {
+                effectType: 'C_03_ARCANA',
+                doResolve: true,
+                targetId: card.instanceId,
+              },
+              description: `【効果】${card.baseCard.name} をアルカナに置く`,
+            },
+            description: `アルカナに ${card.baseCard.name} を置く`,
+            category: 'RESOLVE',
+            cardId: card.cardId,
+            cardName: card.baseCard.name,
+          });
+        }
+        actions.push({
+          action: {
+            type: 'RESOLVE_EFFECT',
+            playerId: resolvingPlayer.playerId,
+            payload: {
+              effectType: 'C_03_ARCANA',
+              doResolve: false,
+            },
+            description: `【効果】アルカナに置かない`,
+          },
+          description: `効果をキャンセルする`,
+          category: 'RESOLVE',
+        });
+      }
+      return actions;
+    }
+
     // 3. ARCANA PHASE (Place 1 card from hand into Arcana)
     if (state.phase === 'ARCANA') {
       if (!active.hasPlacedArcanaThisTurn) {
@@ -874,7 +915,7 @@ export class GameEngine {
           const card = active.hand.splice(handIdx, 1)[0];
           this.payCost(active, card.baseCard.cost);
           card.summonedTurn = nextState.turnNumber;
-          card.hasSummoningSickness = false;
+          card.hasSummoningSickness = true;
           card.isRested = false;
           active.battlefield.push(card);
 
@@ -972,7 +1013,7 @@ export class GameEngine {
               if (reviveTargetIdx !== -1) {
                 const revived = active.archive.splice(reviveTargetIdx, 1)[0];
                 revived.isRested = false;
-                revived.hasSummoningSickness = false;
+                revived.hasSummoningSickness = true;
                 active.battlefield.push(revived);
                 logMessage += ` (アーカイブから「${revived.baseCard.name}」を召喚)`;
               }
@@ -1301,7 +1342,7 @@ export class GameEngine {
                 if (archIdx !== -1) {
                   const revived = runePlayer.archive.splice(archIdx, 1)[0];
                   revived.isRested = false;
-                  revived.hasSummoningSickness = false;
+                  revived.hasSummoningSickness = true;
                   runePlayer.battlefield.push(revived);
                   logMessage += ` (アーカイブから「${revived.baseCard.name}」を召喚)`;
                 }
@@ -1365,6 +1406,30 @@ export class GameEngine {
       }
 
       // ----------------------------------------------------
+
+      // 9.5 RESOLVE EFFECT
+      case 'RESOLVE_EFFECT': {
+        const { effectType, doResolve, targetId } = action.payload as { effectType: string; doResolve: boolean; targetId?: string };
+        const effect = nextState.pendingEffect;
+        if (effect && effectType === effect.effectType) {
+          const player = this.getPlayer(nextState, effect.triggeringPlayerId);
+          if (doResolve && effectType === 'C_03_ARCANA' && targetId) {
+            const handIdx = player.hand.findIndex(c => c.instanceId === targetId);
+            if (handIdx !== -1) {
+              const toArcana = player.hand.splice(handIdx, 1)[0];
+              player.arcana.push({ instance: toArcana, isRested: true });
+              logMessage = `${player.name} は手札から「${toArcana.baseCard.name}」をアルカナに置いた`;
+            }
+          } else {
+            logMessage = `${player.name} は効果をスキップした`;
+          }
+          nextState.pendingEffect = undefined;
+          nextState.phase = 'ACTION';
+          logType = 'EFFECT';
+        }
+        break;
+      }
+
       // 10. END TURN
       // ----------------------------------------------------
       case 'END_TURN': {
@@ -1499,8 +1564,12 @@ export class GameEngine {
     } else if (card.cardId === 'C-03') {
       // 宝花妖精ノエラ: 登場時、手札1枚をアルカナに置いてもよい
       if (owner.hand.length > 0) {
-        const toArcana = owner.hand.pop()!;
-        owner.arcana.push({ instance: toArcana, isRested: true });
+        state.phase = 'EFFECT_RESOLUTION';
+        state.pendingEffect = {
+          effectType: 'C_03_ARCANA',
+          sourceInstanceId: card.instanceId,
+          triggeringPlayerId: owner.playerId,
+        };
       }
     } else if (card.cardId === 'C-04') {
       // 若葉妖精リーファ: 登場時、デッキの上から1枚をアルカナに置く

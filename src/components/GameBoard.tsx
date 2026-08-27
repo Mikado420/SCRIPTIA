@@ -11,6 +11,7 @@ import {
   CardInstance,
 } from '../types/game';
 import { PRESET_DECKS } from '../data/presetDecks';
+import { audioService } from '../utils/AudioService';
 import { GameEngine } from '../engine/gameEngine';
 import { AIService } from '../services/aiService';
 import { CardItem, FACTION_THEMES } from './CardItem';
@@ -302,12 +303,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     const baseCard = 'baseCard' in card ? card.baseCard : card;
 
     // Start long-press timer for 450ms inspect
+    // No long press
+    isLongPressTriggeredRef.current = false;
+    onInspectCard(baseCard);
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
-    longPressTimerRef.current = setTimeout(() => {
-      isLongPressTriggeredRef.current = true;
-      onInspectCard(baseCard);
-      setDragState(null);
-    }, 450);
 
     setDragState({
       card,
@@ -773,7 +772,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
         {/* Center: Dynamic Tactical Prompt */}
         <div className="flex items-center gap-1.5 text-xs">
-          {gameState.phase === 'GUARD_STEP' && isHumanTurn ? (
+          {gameState.phase === 'EFFECT_RESOLUTION' && isHumanTurn ? (
+            <span className="text-indigo-300 font-bold flex items-center gap-1">
+              <Zap className="w-3.5 h-3.5 text-indigo-400 animate-bounce" />
+              手札からアルカナに置くカードを選択、またはスキップしてください
+            </span>
+          ) : gameState.phase === 'GUARD_STEP' && isHumanTurn ? (
             <span className="text-rose-300 font-bold flex items-center gap-1">
               <Shield className="w-3.5 h-3.5 text-rose-400 animate-bounce" />
               相手の攻撃！ガードするユニットを選択、またはスルーしてください
@@ -820,6 +824,14 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             </button>
           )}
 
+          {gameState.phase === 'EFFECT_RESOLUTION' && isHumanTurn && (
+            <button
+              onClick={() => { const skip = legalActions.find(a => a.category === 'RESOLVE' && (a.action.payload as any)?.doResolve === false); if(skip) handleExecuteAction(skip.action); }}
+              className="px-2.5 py-0.5 rounded bg-indigo-950 hover:bg-indigo-900 text-indigo-200 text-[10px] font-bold border border-indigo-600"
+            >
+              スキップ
+            </button>
+          )}
           {gameState.phase === 'GUARD_STEP' && isHumanTurn && passAction && (
             <button
               onClick={() => handleExecuteAction(passAction.action)}
@@ -904,6 +916,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             <span className="font-black truncate max-w-[80px] sm:max-w-[120px]">{pA.name}</span>
           </div>
 
+          
+          {/* Mute Button */}
+          <button onClick={() => audioService.toggleMute()} className="ml-2 px-2 py-0.5 text-[10px] border border-stone-600 rounded bg-stone-800 text-stone-300">
+            SOUNDS
+          </button>
+
           {/* Player HP / Barrier */}
           <div className="flex items-center gap-1 bg-stone-900 px-2 py-0.5 rounded-full border border-stone-800" title="プレイヤー結界">
             <Shield className="w-3 h-3 text-rose-500 fill-rose-500" />
@@ -926,6 +944,29 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               <BookOpen className="w-2.5 h-2.5 text-stone-400" />
               <span>{pA.archive.length}</span>
             </button>
+
+            
+          {/* Player Domain & Runes */}
+          <div className="flex gap-1 items-center bg-stone-900 border border-stone-800 p-1 rounded-md ml-2">
+            <div className="text-[9px] text-stone-500 font-bold px-1">DOMAIN</div>
+            {pA.domain ? (
+               <div className="w-10 h-14 bg-indigo-900/50 border border-indigo-400 rounded cursor-pointer overflow-hidden relative" onClick={() => onInspectCard(pA.domain.baseCard)}>
+                 <div className="absolute inset-0 flex items-center justify-center text-[8px] text-center font-bold text-indigo-200">{pA.domain.baseCard.name}</div>
+               </div>
+            ) : <div className="w-10 h-14 border border-dashed border-stone-700 rounded opacity-30" />}
+            
+            <div className="text-[9px] text-stone-500 font-bold px-1 ml-2">RUNES</div>
+            {[0, 1].map(i => {
+              const rune = pA.runes[i];
+              return rune ? (
+                <div key={i} className="w-10 h-14 bg-stone-800 border-2 border-purple-500 rounded-md relative shadow-md cursor-pointer overflow-hidden" onClick={() => onInspectCard(rune.baseCard)}>
+                   <div className="absolute inset-0 flex items-center justify-center text-[8px] text-center font-bold text-purple-200">{rune.baseCard.name}</div>
+                </div>
+              ) : (
+                <div key={i} className="w-10 h-14 border border-dashed border-stone-700 rounded opacity-30" />
+              )
+            })}
+          </div>
 
             {/* Arcana Slot & Drop Target */}
             <button
@@ -996,7 +1037,21 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                     {/* Quick Action Bubble when Card is Tapped / Selected */}
                     {isSelected && isHumanTurn && (
                       <div className="absolute -top-10 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-stone-900 border border-amber-400 rounded-full px-2 py-1 shadow-2xl z-50 animate-fade-in whitespace-nowrap">
-                        {gameState.phase === 'ARCANA' ? (
+                        {gameState.phase === 'EFFECT_RESOLUTION' ? (
+                          <button
+                            onClick={() => {
+                              const resolveAction = legalActions.find(
+                                (a) =>
+                                  a.action.type === 'RESOLVE_EFFECT' &&
+                                  (a.action.payload as any)?.targetId === card.instanceId
+                              );
+                              if (resolveAction) handleExecuteAction(resolveAction.action);
+                            }}
+                            className="px-1.5 py-0.5 rounded bg-indigo-500 hover:bg-indigo-400 text-stone-900 text-[10px] font-bold"
+                          >
+                            アルカナに置く
+                          </button>
+                        ) : gameState.phase === 'ARCANA' ? (
                           <button
                             onClick={() => {
                               const arcAction = legalActions.find(

@@ -223,6 +223,19 @@ export class AIEvaluator {
         break;
       }
 
+
+      case 'RESOLVE_EFFECT': {
+        const payload = act.payload as { doResolve: boolean; effectType: string; targetId?: string };
+        if (payload.doResolve) {
+          futureValue = 8.0;
+          resourceAdvantage = 7.0; // Generally good to resolve C-03 (put card to arcana) if cost allows it.
+        } else {
+          futureValue = 5.0;
+          resourceAdvantage = 5.0;
+        }
+        break;
+      }
+
       case 'END_TURN': {
         boardAdvantage = 5.0;
         futureValue = 5.0;

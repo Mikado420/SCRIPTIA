@@ -8,7 +8,7 @@ import { AnalyticsView } from './components/AnalyticsView';
 import { ReplayViewer } from './components/ReplayViewer';
 import { DeckBuilder } from './components/DeckBuilder';
 import { DebugView } from './components/DebugView';
-import { CardDetailModal } from './components/CardDetailModal';
+import { CardInfoPanel } from './components/CardInfoPanel';
 import { OrientationWarning } from './components/OrientationWarning';
 import { pwaController, PWAState } from './pwa';
 import { safeStorage } from './utils/storage';
@@ -182,7 +182,7 @@ export const App: React.FC = () => {
       </main>
 
       {/* Global Card Detail Modal */}
-      <CardDetailModal card={inspectedCard} onClose={() => setInspectedCard(null)} />
+      <CardInfoPanel card={inspectedCard} />
     </div>
   );
 };

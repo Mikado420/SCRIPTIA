@@ -117,6 +117,7 @@ export type GamePhase =
   | 'ACTION'
   | 'GUARD_STEP'
   | 'RUNE_STEP'
+  | 'EFFECT_RESOLUTION'
   | 'END';
 
 export interface ActionPayloadMap {
@@ -142,6 +143,11 @@ export interface ActionPayloadMap {
     activate: boolean;
     targetUnitInstanceId?: string;
   };
+  RESOLVE_EFFECT: {
+    effectType: string;
+    doResolve: boolean;
+    targetId?: string;
+  };
   END_TURN: {};
 }
 
@@ -157,7 +163,7 @@ export interface Action<T extends ActionType = ActionType> {
 export interface LegalAction {
   action: Action;
   description: string;
-  category: 'ARCANA' | 'SUMMON' | 'SPELL' | 'RUNE' | 'DOMAIN' | 'ATTACK' | 'GUARD' | 'TRIGGER' | 'PASS';
+  category: 'ARCANA' | 'SUMMON' | 'SPELL' | 'RUNE' | 'DOMAIN' | 'ATTACK' | 'GUARD' | 'TRIGGER' | 'RESOLVE' | 'PASS';
   cardId?: string;
   cardName?: string;
 }
@@ -198,6 +204,7 @@ export interface GameState {
   // Step tracking for reactive phases (guard/rune triggers)
   pendingCombat?: CombatContext;
   pendingTrigger?: TriggerContext;
+  pendingEffect?: { effectType: string; sourceInstanceId: string; triggeringPlayerId: PlayerId };
   lastAction?: Action;
 }
 
