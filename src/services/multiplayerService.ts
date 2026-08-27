@@ -43,6 +43,10 @@ export class MultiplayerClient {
     });
   }
 
+  public getSocket(): Socket {
+    return this.socket;
+  }
+
   public setCallbacks(callbacks: {
     onStateUpdate?: (state: GameState, log?: any) => void;
     onGameStarted?: (playerId: PlayerId, state: GameState) => void;

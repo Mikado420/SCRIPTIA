@@ -27,15 +27,25 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({ customDecks, h
   
   const [onlineGameState, setOnlineGameState] = useState<GameState | null>(null);
   const [myPlayerId, setMyPlayerId] = useState<PlayerId>('PLAYER_A');
+  const [connectionStatus, setConnectionStatus] = useState<'CONNECTING' | 'ONLINE' | 'OFFLINE'>('CONNECTING');
 
   useEffect(() => {
     // Determine server URL dynamically
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const serverUrl = window.location.hostname === 'localhost' ? 'http://localhost:3000' : '/';
-    
+    const envUrl = import.meta.env.VITE_ONLINE_SERVER_URL;
+    let serverUrl = '/';
+    if (envUrl) {
+      serverUrl = envUrl;
+    } else if (window.location.hostname === 'localhost' || window.location.hostname.includes('run.app')) {
+      // In dev or AI studio preview, the backend is on the same origin
+      serverUrl = window.location.origin;
+    }
+
     const newClient = new MultiplayerClient(serverUrl);
     setClient(newClient);
+
+    newClient.getSocket().on('connect', () => setConnectionStatus('ONLINE'));
+    newClient.getSocket().on('disconnect', () => setConnectionStatus('OFFLINE'));
+    newClient.getSocket().on('connect_error', () => setConnectionStatus('OFFLINE'));
 
     return () => {
       newClient.disconnect();
@@ -83,11 +93,21 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({ customDecks, h
   }, [client]);
 
   const handleCreateRoom = () => {
+    if (connectionStatus !== 'ONLINE') {
+      setError('サーバーに接続されていません。');
+      return;
+    }
+    setError('ルーム作成中...');
     client?.createRoom();
   };
 
   const handleJoinRoom = () => {
+    if (connectionStatus !== 'ONLINE') {
+      setError('サーバーに接続されていません。');
+      return;
+    }
     if (joinCode.trim().length === 6) {
+      setError('ルーム参加中...');
       client?.joinRoom(joinCode.trim().toUpperCase());
     } else {
       setError('6桁のルームコードを入力してください。');
@@ -125,6 +145,23 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({ customDecks, h
           <Globe className="w-6 h-6" />
           オンライン対戦 (MVP)
         </h2>
+
+        <div className="flex justify-center mb-6">
+          <div className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2 ${
+            connectionStatus === 'ONLINE' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' :
+            connectionStatus === 'CONNECTING' ? 'bg-amber-950 text-amber-400 border border-amber-800' :
+            'bg-rose-950 text-rose-400 border border-rose-800'
+          }`}>
+            <div className={`w-2 h-2 rounded-full ${
+              connectionStatus === 'ONLINE' ? 'bg-emerald-400' :
+              connectionStatus === 'CONNECTING' ? 'bg-amber-400 animate-pulse' :
+              'bg-rose-400'
+            }`}></div>
+            {connectionStatus === 'ONLINE' ? 'ONLINE' :
+             connectionStatus === 'CONNECTING' ? 'CONNECTING...' :
+             'OFFLINE'}
+          </div>
+        </div>
 
         {error && (
           <div className="mb-4 p-3 bg-red-950/50 border border-red-500 rounded text-red-200 text-sm flex items-center gap-2">
