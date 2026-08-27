@@ -41,6 +41,7 @@ interface GameBoardProps {
   onInspectCard: (card: CardData) => void;
   onNavigateTab?: (tab: AppTab) => void;
   customDecks: Deck[];
+  initialDeckAId?: string;
   hasApiKey: boolean;
 }
 
@@ -58,12 +59,25 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   onInspectCard,
   onNavigateTab,
   customDecks,
+  initialDeckAId,
   hasApiKey,
 }) => {
   const allAvailableDecks = [...customDecks, ...PRESET_DECKS];
 
-  const [deckAId, setDeckAId] = useState<string>(PRESET_DECKS[0].deckId);
+  const [deckAId, setDeckAId] = useState<string>(() => {
+    if (initialDeckAId && allAvailableDecks.some((d) => d.deckId === initialDeckAId)) {
+      return initialDeckAId;
+    }
+    return PRESET_DECKS[0].deckId;
+  });
   const [deckBId, setDeckBId] = useState<string>(PRESET_DECKS[1].deckId);
+
+  // Sync if initialDeckAId changes from external navigation
+  useEffect(() => {
+    if (initialDeckAId && allAvailableDecks.some((d) => d.deckId === initialDeckAId)) {
+      setDeckAId(initialDeckAId);
+    }
+  }, [initialDeckAId]);
 
   const [playerAIsAI, setPlayerAIsAI] = useState<boolean>(false);
   const [playerBIsAI, setPlayerBIsAI] = useState<boolean>(true);

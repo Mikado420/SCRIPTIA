@@ -32,6 +32,9 @@ export const App: React.FC = () => {
     return safeStorage.get<Deck[]>('tcg_custom_decks', []);
   });
 
+  // Selected deck for battle navigation
+  const [selectedBattleDeckId, setSelectedBattleDeckId] = useState<string | undefined>(undefined);
+
   // Verification Reports & Replays
   const [historicalReports, setHistoricalReports] = useState<VerificationReport[]>([]);
   const [currentReport, setCurrentReport] = useState<VerificationReport | null>(null);
@@ -60,20 +63,63 @@ export const App: React.FC = () => {
       });
   }, []);
 
+  // Save or update custom deck strictly by deckId
   const handleSaveCustomDeck = (deck: Deck) => {
     setCustomDecks((prev) => {
-      const existingIdx = prev.findIndex((d) => d.deckId === deck.deckId || d.deckName === deck.deckName);
+      const existingIdx = prev.findIndex((d) => d.deckId === deck.deckId);
       let updated: Deck[];
       if (existingIdx !== -1) {
+        // Preserve original createdAt, update updatedAt
+        const existing = prev[existingIdx];
+        const updatedDeck: Deck = {
+          ...deck,
+          createdAt: existing.createdAt || deck.createdAt,
+          updatedAt: new Date().toISOString(),
+        };
         updated = [...prev];
-        updated[existingIdx] = deck;
+        updated[existingIdx] = updatedDeck;
       } else {
-        updated = [deck, ...prev];
+        // New deck
+        const newDeck: Deck = {
+          ...deck,
+          createdAt: deck.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        updated = [newDeck, ...prev];
       }
       safeStorage.set('tcg_custom_decks', updated);
       return updated;
     });
-    alert(`デッキ「${deck.deckName} (${deck.deckVersion})」を保存しました。`);
+  };
+
+  // Delete custom deck by deckId
+  const handleDeleteCustomDeck = (deckId: string) => {
+    setCustomDecks((prev) => {
+      const updated = prev.filter((d) => d.deckId !== deckId);
+      safeStorage.set('tcg_custom_decks', updated);
+      return updated;
+    });
+  };
+
+  // Duplicate deck
+  const handleDuplicateCustomDeck = (source: Deck) => {
+    const newId = `deck_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const now = new Date().toISOString();
+    const newDeck: Deck = {
+      ...source,
+      deckId: newId,
+      deckName: `${source.deckName} (コピー)`,
+      cards: [...source.cards],
+      createdAt: now,
+      updatedAt: now,
+    };
+    handleSaveCustomDeck(newDeck);
+  };
+
+  // Start battle with specific deck
+  const handleStartBattleWithDeck = (deck: Deck) => {
+    setSelectedBattleDeckId(deck.deckId);
+    setActiveTab('BATTLE');
   };
 
   const handleTestDeck = (deck: Deck) => {
@@ -132,6 +178,7 @@ export const App: React.FC = () => {
             onInspectCard={(c) => setInspectedCard(c)}
             onNavigateTab={setActiveTab}
             customDecks={customDecks}
+            initialDeckAId={selectedBattleDeckId}
             hasApiKey={hasApiKey}
           />
         )}
@@ -168,7 +215,10 @@ export const App: React.FC = () => {
             <DeckBuilder
               onInspectCard={(c) => setInspectedCard(c)}
               onSaveCustomDeck={handleSaveCustomDeck}
+              onDeleteCustomDeck={handleDeleteCustomDeck}
+              onDuplicateDeck={handleDuplicateCustomDeck}
               onTestDeck={handleTestDeck}
+              onStartBattleWithDeck={handleStartBattleWithDeck}
               customDecks={customDecks}
             />
           </div>
@@ -181,8 +231,10 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {/* Global Card Detail Modal */}
-      <CardInfoPanel card={inspectedCard} onClose={() => setInspectedCard(null)} />
+      {/* Global Card Detail Modal (Only active outside of BATTLE to avoid double-panel collision) */}
+      {activeTab !== 'BATTLE' && (
+        <CardInfoPanel card={inspectedCard} onClose={() => setInspectedCard(null)} />
+      )}
     </div>
   );
 };
