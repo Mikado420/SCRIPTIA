@@ -54,12 +54,12 @@ export const App: React.FC = () => {
   useEffect(() => {
     fetch('/api/health')
       .then((r) => r.json())
-      .then((data) => {
+      .then((data: any) => {
         if (data && data.hasApiKey) {
           setHasApiKey(true);
         }
       })
-      .catch((err) => {
+      .catch(() => {
         // Offline / GitHub Pages fallback
         console.log('Health check skipped (running in offline/static client mode)');
       });

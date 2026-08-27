@@ -43,10 +43,6 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({ customDecks, h
     const newClient = new MultiplayerClient(serverUrl);
     setClient(newClient);
 
-    newClient.getSocket().on('connect', () => setConnectionStatus('ONLINE'));
-    newClient.getSocket().on('disconnect', () => setConnectionStatus('OFFLINE'));
-    newClient.getSocket().on('connect_error', () => setConnectionStatus('OFFLINE'));
-
     return () => {
       newClient.disconnect();
     };
@@ -56,6 +52,9 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({ customDecks, h
     if (!client) return;
 
     client.setCallbacks({
+      onConnectionChange: (connStatus) => {
+        setConnectionStatus(connStatus);
+      },
       onRoomCreated: (code) => {
         setRoomCode(code);
         setStatus('IN_ROOM');

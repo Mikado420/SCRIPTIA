@@ -4,7 +4,7 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
-import { Server } from 'socket.io';
+import { WebSocketServer, WebSocket } from 'ws';
 import { GameEngine } from './src/engine/gameEngine.js';
 import { GameState, Action, PlayerId } from './src/types/game.js';
 
@@ -13,20 +13,30 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 const httpServer = createServer(app);
-const io = new Server(httpServer, {
-  cors: {
-    origin: [
-      "https://mikado420.github.io",
-      "http://localhost:5173",
-      "http://localhost:3000",
-      /^https:\/\/ais-.*\.run\.app$/
-    ],
-    methods: ["GET", "POST"],
-    credentials: true
-  }
-});
 
 app.use(express.json({ limit: '10mb' }));
+
+// CORS Middleware for HTTP APIs
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    'https://mikado420.github.io',
+    'http://localhost:5173',
+    'http://localhost:3000',
+  ];
+  if (origin && (allowedOrigins.includes(origin) || (origin.startsWith('https://ais-') && origin.endsWith('.run.app')))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
 
 // Lazy Google GenAI Client
 let genAIClient: GoogleGenAI | null = null;
@@ -42,19 +52,21 @@ function getGenAI(): GoogleGenAI | null {
 }
 
 // ==========================================
-// Multiplayer Server State
+// Native WebSocket Multiplayer Rooms (Mirroring Durable Objects)
 // ==========================================
+
+interface PlayerSession {
+  connectionId: string;
+  ws: WebSocket;
+  role: PlayerId;
+  ready: boolean;
+  deckCards: any[] | null;
+}
 
 interface Room {
   id: string;
-  hostSocketId: string;
-  guestSocketId: string | null;
-  hostDeckId?: string;
-  guestDeckId?: string;
-  hostCards?: any[];
-  guestCards?: any[];
-  hostReady: boolean;
-  guestReady: boolean;
+  playerA: PlayerSession | null;
+  playerB: PlayerSession | null;
   gameState: GameState | null;
   engine: GameEngine | null;
 }
@@ -70,140 +82,303 @@ function generateRoomCode() {
   return code;
 }
 
-// Client State Sanitizer (Hides opponent's hand/deck)
 function sanitizeGameState(state: GameState, playerId: PlayerId): GameState {
-  const safeState = JSON.parse(JSON.stringify(state)); // Deep copy
-  const opponentId = playerId === 'PLAYER_A' ? 'playerB' : 'playerA';
-  
-  // Hide opponent deck and hand contents but keep lengths / instance IDs
-  const opponent = safeState[opponentId];
+  const safeState = JSON.parse(JSON.stringify(state));
+  const opponentRole = playerId === 'PLAYER_A' ? 'playerB' : 'playerA';
+  const opponent = safeState[opponentRole];
+
   if (opponent) {
-    opponent.deck = opponent.deck.map((c: any) => ({ instanceId: c.instanceId, baseCard: { name: 'Hidden Card' } }));
-    opponent.hand = opponent.hand.map((c: any) => ({ instanceId: c.instanceId, baseCard: { name: 'Hidden Card' } }));
+    opponent.deck = opponent.deck.map((c: any) => ({
+      instanceId: c.instanceId,
+      ownerPlayerId: c.ownerPlayerId,
+      controllerPlayerId: c.controllerPlayerId,
+      zone: c.zone,
+      isRested: false,
+      hasAttackedThisTurn: false,
+      turnPlayed: c.turnPlayed,
+      damageTaken: 0,
+      buffs: [],
+      baseCard: {
+        cardId: 'HIDDEN',
+        name: 'Hidden Card',
+        cardType: 'UNIT',
+        faction: 'NEUTRAL',
+        factionName: '無',
+        cost: 0,
+        atk: 0,
+        def: 0,
+        brk: 0,
+        effectsText: '',
+        effectKeywords: [],
+      },
+    }));
+
+    opponent.hand = opponent.hand.map((c: any) => ({
+      instanceId: c.instanceId,
+      ownerPlayerId: c.ownerPlayerId,
+      controllerPlayerId: c.controllerPlayerId,
+      zone: c.zone,
+      isRested: false,
+      hasAttackedThisTurn: false,
+      turnPlayed: c.turnPlayed,
+      damageTaken: 0,
+      buffs: [],
+      baseCard: {
+        cardId: 'HIDDEN',
+        name: 'Hidden Card',
+        cardType: 'UNIT',
+        faction: 'NEUTRAL',
+        factionName: '無',
+        cost: 0,
+        atk: 0,
+        def: 0,
+        brk: 0,
+        effectsText: '',
+        effectKeywords: [],
+      },
+    }));
+
+    if (opponent.runes && opponent.runes.length > 0) {
+      opponent.runes = opponent.runes.map((r: any) => ({
+        instanceId: r.instanceId,
+        ownerPlayerId: r.ownerPlayerId,
+        controllerPlayerId: r.controllerPlayerId,
+        zone: r.zone,
+        isRested: false,
+        hasAttackedThisTurn: false,
+        turnPlayed: r.turnPlayed,
+        damageTaken: 0,
+        buffs: [],
+        baseCard: {
+          cardId: 'HIDDEN_RUNE',
+          name: '伏せルーン',
+          cardType: 'RUNE',
+          faction: 'NEUTRAL',
+          factionName: '無',
+          cost: 0,
+          atk: 0,
+          def: 0,
+          brk: 0,
+          effectsText: '',
+          effectKeywords: [],
+        },
+      }));
+    }
   }
+
   return safeState;
 }
 
-io.on('connection', (socket) => {
-  console.log(`Socket connected: ${socket.id}`);
+function sendMsg(ws: WebSocket, msg: any) {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(msg));
+  }
+}
 
-  socket.on('create_room', (data) => {
-    if (data?.version !== '2.3') {
-      return socket.emit('error', 'クライアントのバージョンがサーバーと異なります (Required: v2.3)。リロードしてください。');
-    }
-    const code = generateRoomCode();
-    rooms.set(code, {
-      id: code,
-      hostSocketId: socket.id,
-      guestSocketId: null,
-      hostReady: false,
-      guestReady: false,
-      gameState: null,
-      engine: null
-    });
-    socket.join(code);
-    socket.emit('room_created', { code });
-  });
+function broadcastRoom(room: Room, msg: any) {
+  if (room.playerA?.ws) sendMsg(room.playerA.ws, msg);
+  if (room.playerB?.ws) sendMsg(room.playerB.ws, msg);
+}
 
-  socket.on('join_room', (data) => {
-    if (data?.version !== '2.3') {
-      return socket.emit('error', 'クライアントのバージョンがサーバーと異なります (Required: v2.3)。リロードしてください。');
-    }
-    const room = rooms.get(data.code);
-    if (!room) {
-      return socket.emit('error', 'Room not found');
-    }
-    if (room.guestSocketId) {
-      // Reconnect logic or full
-      if (room.hostSocketId !== socket.id && room.guestSocketId !== socket.id) {
-         return socket.emit('error', 'Room is full');
-      }
-    }
-    
-    room.guestSocketId = socket.id;
-    socket.join(data.code);
-    
-    io.to(data.code).emit('room_joined', { code: data.code });
-  });
+const wss = new WebSocketServer({ noServer: true });
 
-  socket.on('player_ready', (data) => {
-    const room = rooms.get(data.code);
-    if (!room) return;
-    
-    if (socket.id === room.hostSocketId) {
-      room.hostReady = true;
-      room.hostCards = data.deckCards;
-    } else if (socket.id === room.guestSocketId) {
-      room.guestReady = true;
-      room.guestCards = data.deckCards;
-    }
+wss.on('connection', (ws: WebSocket, req) => {
+  const url = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
+  let roomCode = url.searchParams.get('code') || '';
+  const connectionId = Math.random().toString(36).substring(2, 10);
 
-    io.to(data.code).emit('player_ready_state', {
-      hostReady: room.hostReady,
-      guestReady: room.guestReady
-    });
-
-    if (room.hostReady && room.guestReady && room.hostCards && room.guestCards && !room.gameState) {
-      room.engine = new GameEngine(Date.now());
-      room.gameState = room.engine.createInitialState(
-        `game_${data.code}`,
-        room.hostCards.map((c: any) => c.cardId),
-        room.guestCards.map((c: any) => c.cardId),
-        'Player 1',
-        'Player 2',
-        false,
-        false,
-        'HUMAN',
-        'HUMAN'
-      );
-      
-      // Send initialized state
-      io.to(room.hostSocketId).emit('game_started', {
-        playerId: 'PLAYER_A',
-        state: sanitizeGameState(room.gameState, 'PLAYER_A')
-      });
-      io.to(room.guestSocketId).emit('game_started', {
-        playerId: 'PLAYER_B',
-        state: sanitizeGameState(room.gameState, 'PLAYER_B')
+  let currentRoom: Room | null = null;
+  if (roomCode) {
+    roomCode = roomCode.toUpperCase();
+    if (!rooms.has(roomCode)) {
+      rooms.set(roomCode, {
+        id: roomCode,
+        playerA: null,
+        playerB: null,
+        gameState: null,
+        engine: null,
       });
     }
-  });
+    currentRoom = rooms.get(roomCode)!;
+  }
 
-  socket.on('action', (data) => {
-    const room = rooms.get(data.code);
-    if (!room || !room.gameState || !room.engine) return;
-
+  ws.on('message', (raw) => {
     try {
-      const playerId = socket.id === room.hostSocketId ? 'PLAYER_A' : 'PLAYER_B';
-      
-      // Verify action validity? For now let engine step handle logic
-      const { nextState, log } = room.engine.step(room.gameState, data.action);
-      room.gameState = nextState;
+      const msg = JSON.parse(raw.toString());
 
-      io.to(room.hostSocketId).emit('state_update', {
-        state: sanitizeGameState(room.gameState, 'PLAYER_A'),
-        log
-      });
-      io.to(room.guestSocketId!).emit('state_update', {
-        state: sanitizeGameState(room.gameState, 'PLAYER_B'),
-        log
-      });
-    } catch (e) {
-      console.error(e);
-      socket.emit('error', 'Action failed');
+      if (msg.type === 'ping') {
+        return sendMsg(ws, { type: 'pong' });
+      }
+
+      if (msg.type === 'create_room') {
+        if (msg.version !== '2.3') {
+          return sendMsg(ws, { type: 'error', message: 'クライアントのバージョンがサーバーと異なります (Required: v2.3)。' });
+        }
+        const code = roomCode || generateRoomCode();
+        let room = rooms.get(code);
+        if (!room) {
+          room = {
+            id: code,
+            playerA: null,
+            playerB: null,
+            gameState: null,
+            engine: null,
+          };
+          rooms.set(code, room);
+        }
+        currentRoom = room;
+        room.playerA = {
+          connectionId,
+          ws,
+          role: 'PLAYER_A',
+          ready: false,
+          deckCards: null,
+        };
+        return sendMsg(ws, { type: 'room_created', code });
+      }
+
+      if (msg.type === 'join_room') {
+        if (msg.version !== '2.3') {
+          return sendMsg(ws, { type: 'error', message: 'クライアントのバージョンがサーバーと異なります (Required: v2.3)。' });
+        }
+        const targetCode = (msg.code || roomCode).toUpperCase();
+        let room = rooms.get(targetCode);
+        if (!room) {
+          return sendMsg(ws, { type: 'error', message: 'ルームが見つかりません。' });
+        }
+        currentRoom = room;
+
+        if (room.playerA && room.playerB) {
+          if (room.playerA.connectionId !== connectionId && room.playerB.connectionId !== connectionId) {
+            return sendMsg(ws, { type: 'error', message: 'ルームは満員です。' });
+          }
+        }
+
+        if (!room.playerA) {
+          room.playerA = { connectionId, ws, role: 'PLAYER_A', ready: false, deckCards: null };
+          return sendMsg(ws, { type: 'room_created', code: targetCode });
+        } else if (room.playerA.connectionId === connectionId) {
+          room.playerA.ws = ws;
+          return sendMsg(ws, { type: 'room_joined', code: targetCode });
+        } else {
+          room.playerB = { connectionId, ws, role: 'PLAYER_B', ready: false, deckCards: null };
+          return broadcastRoom(room, { type: 'room_joined', code: targetCode });
+        }
+      }
+
+      if (msg.type === 'player_ready') {
+        const room = currentRoom || (msg.code ? rooms.get(msg.code.toUpperCase()) : null);
+        if (!room) return sendMsg(ws, { type: 'error', message: 'ルームが存在しません。' });
+
+        if (room.playerA && room.playerA.connectionId === connectionId) {
+          room.playerA.ready = true;
+          room.playerA.deckCards = msg.deckCards;
+        } else if (room.playerB && room.playerB.connectionId === connectionId) {
+          room.playerB.ready = true;
+          room.playerB.deckCards = msg.deckCards;
+        } else {
+          return sendMsg(ws, { type: 'error', message: '未登録のプレイヤーです。' });
+        }
+
+        broadcastRoom(room, {
+          type: 'player_ready_state',
+          hostReady: !!room.playerA?.ready,
+          guestReady: !!room.playerB?.ready,
+        });
+
+        if (room.playerA?.ready && room.playerB?.ready && room.playerA.deckCards && room.playerB.deckCards && !room.gameState) {
+          const seed = Date.now();
+          room.engine = new GameEngine(seed);
+          room.gameState = room.engine.createInitialState(
+            `game_${room.id}`,
+            room.playerA.deckCards.map((c: any) => c.cardId),
+            room.playerB.deckCards.map((c: any) => c.cardId),
+            'Player 1 (朱)',
+            'Player 2 (蒼)',
+            false,
+            false,
+            'HUMAN',
+            'HUMAN'
+          );
+
+          if (room.playerA?.ws) {
+            sendMsg(room.playerA.ws, {
+              type: 'game_started',
+              playerId: 'PLAYER_A',
+              state: sanitizeGameState(room.gameState, 'PLAYER_A'),
+            });
+          }
+          if (room.playerB?.ws) {
+            sendMsg(room.playerB.ws, {
+              type: 'game_started',
+              playerId: 'PLAYER_B',
+              state: sanitizeGameState(room.gameState, 'PLAYER_B'),
+            });
+          }
+        }
+      }
+
+      if (msg.type === 'action') {
+        const room = currentRoom || (msg.code ? rooms.get(msg.code.toUpperCase()) : null);
+        if (!room || !room.gameState || !room.engine) return;
+
+        const senderRole: PlayerId = room.playerA?.connectionId === connectionId ? 'PLAYER_A' : 'PLAYER_B';
+
+        try {
+          const { nextState, log } = room.engine.step(room.gameState, msg.action);
+          room.gameState = nextState;
+
+          if (room.playerA?.ws) {
+            sendMsg(room.playerA.ws, {
+              type: 'state_update',
+              state: sanitizeGameState(room.gameState, 'PLAYER_A'),
+              log,
+            });
+          }
+          if (room.playerB?.ws) {
+            sendMsg(room.playerB.ws, {
+              type: 'state_update',
+              state: sanitizeGameState(room.gameState, 'PLAYER_B'),
+              log,
+            });
+          }
+        } catch (e: any) {
+          console.error(e);
+          sendMsg(ws, { type: 'error', message: `Action failed: ${e?.message || ''}` });
+        }
+      }
+    } catch (err) {
+      console.error('WS Error:', err);
     }
   });
 
-  socket.on('disconnect', () => {
-    console.log(`Socket disconnected: ${socket.id}`);
-    // Find room and notify opponent
-    for (const [code, room] of Array.from(rooms.entries())) {
-      if (room.hostSocketId === socket.id || room.guestSocketId === socket.id) {
-        io.to(code).emit('opponent_disconnected');
-        // We could implement reconnection timeout here, but for now just cleanup if empty
+  ws.on('close', () => {
+    if (currentRoom) {
+      if (currentRoom.playerA?.connectionId === connectionId) {
+        currentRoom.playerA = null;
+        if (currentRoom.playerB?.ws) {
+          sendMsg(currentRoom.playerB.ws, { type: 'opponent_disconnected' });
+        }
+      } else if (currentRoom.playerB?.connectionId === connectionId) {
+        currentRoom.playerB = null;
+        if (currentRoom.playerA?.ws) {
+          sendMsg(currentRoom.playerA.ws, { type: 'opponent_disconnected' });
+        }
       }
     }
   });
+});
+
+// Upgrade HTTP requests for WebSocket on /ws
+httpServer.on('upgrade', (request, socket, head) => {
+  const url = new URL(request.url || '', `http://${request.headers.host || 'localhost'}`);
+  if (url.pathname === '/ws' || url.pathname.startsWith('/ws/')) {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
 });
 
 // ==========================================
@@ -213,30 +388,35 @@ io.on('connection', (socket) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
+    service: 'SCRIPTIA Online Server (Express Dev/Preview & Cloudflare DO Compatible)',
     hasApiKey: !!process.env.GEMINI_API_KEY,
-    rulesVersion: '2026.1',
-    cardPoolVersion: 'Ver.2.2',
+    rulesVersion: 'Version 0.03',
+    cardPoolVersion: 'Ver.2.3',
   });
+});
+
+app.post('/api/room/create', (req, res) => {
+  const code = generateRoomCode();
+  res.json({ code });
 });
 
 // AI Decision Endpoint (Tactical TCG Action Selection)
 app.post('/api/ai/decision', async (req, res) => {
   try {
-    const { visibleState, legalActions, aiPlayerId } = req.body;
+    const { visibleState, legalActions } = req.body;
     if (!visibleState || !legalActions || legalActions.length === 0) {
       return res.status(400).json({ error: 'visibleState and non-empty legalActions are required' });
     }
 
     const ai = getGenAI();
     if (!ai) {
-      // Return flag to client to use Heuristic AI fallback
       return res.json({
         fallback: true,
         reason: 'No GEMINI_API_KEY configured on server. Used Heuristic AI.',
       });
     }
 
-    const systemPrompt = `You are a Grandmaster TCG AI Player in a high-strategy card game (80-card pool Ver 2.2).
+    const systemPrompt = `You are a Grandmaster TCG AI Player in a high-strategy card game (80-card pool Ver 2.3).
 Your goal is to maximize your win probability by evaluating board state, tempo, card advantage, mana curves, lethal threats, and enemy triggers.
 
 Given the current visible GameState and the list of Legal Actions (0-indexed):
@@ -403,7 +583,7 @@ async function startServer() {
   }
 
   httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`TCG Simulator Server running on http://localhost:${PORT}`);
+    console.log(`TCG Simulator Server (WebSocket + DO protocol) running on http://localhost:${PORT}`);
   });
 }
 

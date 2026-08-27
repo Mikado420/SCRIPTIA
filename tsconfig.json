@@ -16,7 +16,7 @@
     "allowJs": true,
     "esModuleInterop": true,
     "jsx": "react-jsx",
-    "types": ["vite/client"],
+    "types": ["vite/client", "node", "@cloudflare/workers-types"],
     "paths": {
       "@/*": [
         "./*"

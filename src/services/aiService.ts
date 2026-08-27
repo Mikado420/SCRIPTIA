@@ -41,7 +41,7 @@ export class AIService {
         throw new Error(`Server returned ${response.status}`);
       }
 
-      const data = await response.json();
+      const data: any = await response.json();
 
       if (data.fallback || !data.selectedAction) {
         const fallbackDecision = this.evaluator.selectBestAction(state, legalActions, aiPlayerId);
@@ -99,7 +99,7 @@ export class AIService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ visibleState }),
       });
-      const data = await response.json();
+      const data: any = await response.json();
       return data.analysis || '戦況分析を取得できませんでした。';
     } catch {
       return 'オフライン戦況分析: 盤面の有利トレードとアルカナの順次セットを心がけてください。';
@@ -113,7 +113,7 @@ export class AIService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ matchSummary: summary }),
       });
-      const data = await response.json();
+      const data: any = await response.json();
       return data.review || '対戦総括を取得できませんでした。';
     } catch {
       return 'オフライン対戦総括: 序盤のアルカナ配分とテンポ維持が勝敗を分けました。';
