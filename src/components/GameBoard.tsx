@@ -589,8 +589,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       {/* ============================================================ */}
       {/* 1. TOP OPPONENT AREA: Minimal HUD + Quick Menu Trigger */}
       {/* ============================================================ */}
-      <div className="w-full shrink-0 flex items-center justify-between px-2 pt-1 pb-0.5 z-20">
-        <div className="flex-1 max-w-2xl">
+      <div className="w-full shrink-0 flex items-center justify-between px-1.5 pt-0.5 pb-0.5 z-20 bg-stone-950/90 border-b border-stone-800/80">
+        <div className="flex-1 min-w-0">
           <PlayerHUD
             player={pB}
             isOpponent={true}
@@ -611,84 +611,83 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         </div>
 
         {/* Top Right Quick Menu & Auto Battle Toggle */}
-        <div className="flex items-center gap-1.5 ml-2">
+        <div className="flex items-center gap-1 shrink-0 ml-1.5">
           <button
             onClick={() => setIsAutoPlaying(!isAutoPlaying)}
-            className={`px-2.5 py-1 rounded-full text-xs font-black flex items-center gap-1 border transition-all ${
+            className={`px-2 py-0.5 rounded-full text-[10px] font-black flex items-center gap-0.5 border transition-all ${
               isAutoPlaying
                 ? 'bg-emerald-600 text-white border-emerald-400 animate-pulse'
                 : 'bg-stone-900 text-stone-300 border-stone-700 hover:bg-stone-800'
             }`}
             title="AIオート対戦の切り替え"
           >
-            <Play className="w-3 h-3 fill-current" />
-            <span className="text-[11px]">{isAutoPlaying ? 'AUTO中' : 'AUTO'}</span>
+            <Play className="w-2.5 h-2.5 fill-current" />
+            <span>{isAutoPlaying ? 'AUTO中' : 'AUTO'}</span>
           </button>
 
           <button
             id="open-game-menu-btn"
             onClick={() => setShowMenuModal(true)}
-            className="p-1.5 rounded-full bg-stone-900 hover:bg-stone-800 text-stone-300 hover:text-white border border-stone-700 transition-colors shadow-sm"
+            className="p-1 rounded-full bg-stone-900 hover:bg-stone-800 text-stone-300 hover:text-white border border-stone-700 transition-colors shadow-sm"
             title="対戦メニューを開く"
           >
-            <Menu className="w-4 h-4" />
+            <Menu className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
       {/* ============================================================ */}
-      {/* 2. OPPONENT BATTLEFIELD (Field B) */}
+      {/* 2 & 3 & 4. MAIN BATTLEFIELD AREA (Evenly allocated in landscape) */}
       {/* ============================================================ */}
-      <BattlefieldZone
-        units={pB.battlefield}
-        isOpponent={true}
-        selectedAttackerInstanceId={selectedAttackerInstanceId}
-        legalActions={legalActions}
-        isHumanTurn={isHumanTurn}
-        phase={gameState.phase}
-        hoveredDropZone={hoveredDropZone}
-        dragSource={dragState?.source}
-        onSelectAttacker={setSelectedAttackerInstanceId}
-        onInspectCard={(c) => setDetailCard(c)}
-        onExecuteAction={handleExecuteAction}
-        onPointerDownUnit={(e, u) => handlePointerDown(e, u, 'GUARD_UNIT')}
-      />
+      <div className="flex-1 min-h-0 w-full flex flex-col justify-evenly py-0.5 overflow-visible relative z-10">
+        {/* Opponent Battlefield (Field B) */}
+        <BattlefieldZone
+          units={pB.battlefield}
+          isOpponent={true}
+          selectedAttackerInstanceId={selectedAttackerInstanceId}
+          legalActions={legalActions}
+          isHumanTurn={isHumanTurn}
+          phase={gameState.phase}
+          hoveredDropZone={hoveredDropZone}
+          dragSource={dragState?.source}
+          onSelectAttacker={setSelectedAttackerInstanceId}
+          onInspectCard={(c) => setDetailCard(c)}
+          onExecuteAction={handleExecuteAction}
+          onPointerDownUnit={(e, u) => handlePointerDown(e, u, 'GUARD_UNIT')}
+        />
 
-      {/* ============================================================ */}
-      {/* 3. CENTER BATTLE DIVIDER & COMBAT ANIMATIONS */}
-      {/* ============================================================ */}
-      <CombatOverlay
-        gameState={gameState}
-        legalActions={legalActions}
-        isHumanTurn={isHumanTurn}
-        selectedAttackerInstanceId={selectedAttackerInstanceId}
-        combatAnimation={combatAnimation}
-        onClearAttacker={() => setSelectedAttackerInstanceId(null)}
-        onExecuteAction={handleExecuteAction}
-      />
+        {/* Central Minimal Battle Divider & Urgent Action Floating HUD */}
+        <CombatOverlay
+          gameState={gameState}
+          legalActions={legalActions}
+          isHumanTurn={isHumanTurn}
+          selectedAttackerInstanceId={selectedAttackerInstanceId}
+          combatAnimation={combatAnimation}
+          onClearAttacker={() => setSelectedAttackerInstanceId(null)}
+          onExecuteAction={handleExecuteAction}
+        />
 
-      {/* ============================================================ */}
-      {/* 4. PLAYER BATTLEFIELD (Field A) */}
-      {/* ============================================================ */}
-      <BattlefieldZone
-        units={pA.battlefield}
-        isOpponent={false}
-        selectedAttackerInstanceId={selectedAttackerInstanceId}
-        legalActions={legalActions}
-        isHumanTurn={isHumanTurn}
-        phase={gameState.phase}
-        hoveredDropZone={hoveredDropZone}
-        dragSource={dragState?.source}
-        onSelectAttacker={(id) => {
-          setSelectedAttackerInstanceId(id);
-          setSelectedHandInstanceId(null);
-        }}
-        onInspectCard={(c) => setDetailCard(c)}
-        onExecuteAction={handleExecuteAction}
-        onPointerDownUnit={(e, u) =>
-          handlePointerDown(e, u, gameState.phase === 'GUARD_STEP' ? 'GUARD_UNIT' : 'PLAYER_UNIT')
-        }
-      />
+        {/* Player Battlefield (Field A) */}
+        <BattlefieldZone
+          units={pA.battlefield}
+          isOpponent={false}
+          selectedAttackerInstanceId={selectedAttackerInstanceId}
+          legalActions={legalActions}
+          isHumanTurn={isHumanTurn}
+          phase={gameState.phase}
+          hoveredDropZone={hoveredDropZone}
+          dragSource={dragState?.source}
+          onSelectAttacker={(id) => {
+            setSelectedAttackerInstanceId(id);
+            setSelectedHandInstanceId(null);
+          }}
+          onInspectCard={(c) => setDetailCard(c)}
+          onExecuteAction={handleExecuteAction}
+          onPointerDownUnit={(e, u) =>
+            handlePointerDown(e, u, gameState.phase === 'GUARD_STEP' ? 'GUARD_UNIT' : 'PLAYER_UNIT')
+          }
+        />
+      </div>
 
       {/* ============================================================ */}
       {/* 5. PLAYER BOTTOM ZONE: Hand, HUD & End Turn Action */}
@@ -711,7 +710,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         />
 
         {/* Player Bottom HUD Bar & End Turn Action */}
-        <div className="w-full flex items-center justify-between px-1 sm:px-2 bg-stone-950/95 border-t border-stone-800/80 z-30">
+        <div className="w-full flex items-center justify-between px-1 sm:px-2 py-0.5 bg-stone-950/95 border-t border-stone-800/80 z-30">
           <div className="flex-1 min-w-0">
             <PlayerHUD
               player={pA}
@@ -745,13 +744,13 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               <button
                 id="end-turn-btn"
                 onClick={() => handleExecuteAction(passAction.action)}
-                className="px-3 sm:px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black text-xs shadow-lg shadow-amber-600/30 border border-amber-300 active:scale-95 transition-all flex items-center gap-1"
+                className="px-2.5 sm:px-3.5 py-1 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black text-[11px] sm:text-xs shadow-md shadow-amber-600/30 border border-amber-300 active:scale-95 transition-all flex items-center gap-1"
               >
                 <span>ターン終了</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                <ArrowRight className="w-3 h-3" />
               </button>
             ) : (
-              <div className="px-2.5 py-1 rounded-full bg-stone-900 border border-stone-800 text-stone-500 font-mono text-[10px]">
+              <div className="px-2 py-0.5 rounded-full bg-stone-900 border border-stone-800 text-stone-500 font-mono text-[9px]">
                 {isHumanTurn ? '待機中' : '相手ターン'}
               </div>
             )}

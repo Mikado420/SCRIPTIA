@@ -43,19 +43,16 @@ export const BattlefieldZone: React.FC<BattlefieldZoneProps> = ({
   return (
     <div
       data-dropzone={dropzoneId}
-      className={`flex-1 w-full flex items-center justify-center gap-1.5 sm:gap-2.5 px-2 py-0.5 overflow-visible relative z-10 transition-colors min-h-[95px] sm:min-h-[110px] ${
+      className={`flex-1 w-full flex items-center justify-center gap-1 sm:gap-2 px-2 overflow-visible relative z-10 transition-colors ${
         !isOpponent && dragSource === 'HAND' && phase === 'ACTION'
           ? 'bg-emerald-950/20 ring-1 ring-emerald-500/40 rounded-xl'
           : ''
       }`}
     >
       {units.length === 0 ? (
-        <div className="flex flex-col items-center justify-center opacity-30 select-none pointer-events-none py-1">
-          <div className="text-[10px] font-mono tracking-widest font-bold text-stone-500">
-            {isOpponent ? '相手フィールド (0/6)' : '自分フィールド (0/6)'}
-          </div>
+        <div className="w-full h-full flex items-center justify-center select-none pointer-events-none">
           {!isOpponent && dragSource === 'HAND' && (
-            <div className="text-[9px] text-emerald-400 font-bold mt-0.5 animate-pulse">
+            <div className="text-[9px] text-emerald-400 font-bold animate-pulse px-3 py-1 bg-emerald-950/40 border border-dashed border-emerald-500/50 rounded-full">
               ドロップして召喚
             </div>
           )}

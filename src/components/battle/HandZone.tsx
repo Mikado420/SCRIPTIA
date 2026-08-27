@@ -29,15 +29,15 @@ export const HandZone: React.FC<HandZoneProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const cardCount = hand.length;
 
-  // Calculate dynamic overlap based on card count
-  // When card count is 1-4, no overlap; 5+ cards overlap progressively
+  // Calculate dynamic overlap based on card count (supporting up to 15 cards)
   const getMarginLeft = (index: number) => {
     if (index === 0) return 0;
-    if (cardCount <= 4) return 6; // slight gap
-    if (cardCount <= 6) return -12;
-    if (cardCount <= 8) return -26;
-    if (cardCount <= 10) return -38;
-    return -48; // 11-12+ cards
+    if (cardCount <= 3) return 6; // slight gap
+    if (cardCount <= 5) return -8;
+    if (cardCount <= 7) return -18;
+    if (cardCount <= 9) return -28;
+    if (cardCount <= 12) return -38;
+    return -44; // 13-15+ cards
   };
 
   const selectedCard = hand.find((c) => c.instanceId === selectedHandInstanceId);
@@ -51,13 +51,13 @@ export const HandZone: React.FC<HandZoneProps> = ({
   return (
     <div
       ref={containerRef}
-      className="relative w-full flex-1 flex flex-col items-center justify-end px-2 pb-1 pointer-events-auto"
+      className="relative w-full shrink-0 flex flex-col items-center justify-end px-1 pb-0.5 pointer-events-auto h-[74px] sm:h-[82px] md:h-[90px] overflow-visible"
     >
       {/* Hand Cards Fan Container */}
       <div className="flex items-end justify-center max-w-full overflow-visible transition-all">
         {cardCount === 0 ? (
-          <div className="text-[10px] text-stone-600 font-mono italic py-2">
-            手札がありません (0枚)
+          <div className="text-[9px] text-stone-600 font-mono italic py-1">
+            手札 0枚
           </div>
         ) : (
           hand.map((card, index) => {
@@ -87,8 +87,8 @@ export const HandZone: React.FC<HandZoneProps> = ({
                 }}
                 className={`transition-all duration-150 transform cursor-pointer shrink-0 ${
                   isSelected
-                    ? '-translate-y-6 scale-110 shadow-2xl z-40'
-                    : 'hover:-translate-y-3 hover:scale-105 hover:z-30'
+                    ? '-translate-y-4 scale-105 shadow-xl z-40'
+                    : 'hover:-translate-y-2 hover:scale-105 hover:z-30'
                 }`}
               >
                 <CardItem
@@ -107,7 +107,7 @@ export const HandZone: React.FC<HandZoneProps> = ({
 
       {/* Floating Action Ribbon when a Card is Selected */}
       {selectedCard && isHumanTurn && (
-        <div className="absolute -top-11 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-stone-900/98 border border-amber-400/90 rounded-full px-3 py-1 shadow-2xl z-50 animate-fade-in backdrop-blur-md">
+        <div className="absolute -top-9 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-stone-900/98 border border-amber-400/90 rounded-full px-2.5 py-0.5 shadow-2xl z-50 animate-fade-in backdrop-blur-md whitespace-nowrap">
           {/* Phase Specific Fast Actions */}
           {phase === 'ARCANA' ? (
             <button

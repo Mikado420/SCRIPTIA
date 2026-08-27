@@ -118,39 +118,39 @@ export const CardItem: React.FC<CardItemProps> = ({
 
   const isUnit = baseCard.cardType === 'UNIT' || baseCard.cardType === 'EVOLVE_UNIT';
 
-  // Responsive card dimensions optimized for duel field and hand
+  // Responsive card dimensions optimized for duel field and hand in landscape
   const sizeConfig = {
     xs: {
-      container: 'w-[68px] sm:w-[74px] h-[92px] sm:h-[102px] p-1 text-[9px] rounded-lg',
-      cost: 'w-4 h-4 text-[9px] font-black',
-      name: 'text-[9px] leading-tight font-black',
-      stats: 'text-[10px] font-black',
-      statsIcon: 'w-2.5 h-2.5',
-      badge: 'text-[7px] px-0.5 py-0',
+      container: 'w-[52px] sm:w-[58px] md:w-[64px] h-[72px] sm:h-[80px] md:h-[88px] p-0.5 sm:p-1 text-[8px] rounded-lg',
+      cost: 'w-3.5 h-3.5 sm:w-4 sm:h-4 text-[8px] sm:text-[9px] font-black',
+      name: 'text-[8px] sm:text-[9px] leading-none font-black',
+      stats: 'text-[9px] sm:text-[10px] font-black',
+      statsIcon: 'w-2 h-2 sm:w-2.5 sm:h-2.5',
+      badge: 'text-[6px] sm:text-[7px] px-0.5 py-0',
     },
     sm: {
-      container: 'w-[78px] sm:w-[86px] h-[104px] sm:h-[116px] p-1 sm:p-1.5 text-[9px] sm:text-[10px] rounded-xl',
-      cost: 'w-4.5 h-4.5 sm:w-5 sm:h-5 text-[10px] font-black',
-      name: 'text-[9px] sm:text-[10px] leading-tight font-black',
-      stats: 'text-[10px] sm:text-[11px] font-black',
-      statsIcon: 'w-2.5 h-2.5 sm:w-3 sm:h-3',
-      badge: 'text-[7px] sm:text-[8px] px-1 py-0.2',
+      container: 'w-[56px] sm:w-[62px] md:w-[68px] h-[76px] sm:h-[84px] md:h-[92px] p-0.5 sm:p-1 text-[8px] sm:text-[9px] rounded-lg',
+      cost: 'w-3.5 h-3.5 sm:w-4 sm:h-4 text-[9px] font-black',
+      name: 'text-[8px] sm:text-[9px] leading-none font-black',
+      stats: 'text-[9px] sm:text-[10px] md:text-[11px] font-black',
+      statsIcon: 'w-2 h-2 sm:w-2.5 sm:h-2.5',
+      badge: 'text-[6px] sm:text-[7px] px-0.5 py-0',
     },
     md: {
-      container: 'w-[100px] sm:w-[110px] h-[140px] sm:h-[154px] p-2 text-xs rounded-xl',
-      cost: 'w-6 h-6 text-xs font-black',
-      name: 'text-xs leading-tight font-black',
+      container: 'w-[84px] sm:w-[94px] h-[116px] sm:h-[130px] p-1.5 text-[10px] rounded-xl',
+      cost: 'w-5 h-5 text-xs font-black',
+      name: 'text-[10px] sm:text-xs leading-tight font-black',
       stats: 'text-xs font-black',
       statsIcon: 'w-3 h-3',
-      badge: 'text-[9px] px-1 py-0.5',
+      badge: 'text-[8px] px-1 py-0.5',
     },
     lg: {
-      container: 'w-[130px] sm:w-[140px] h-[180px] sm:h-[196px] p-2.5 text-sm rounded-2xl',
-      cost: 'w-7 h-7 text-sm font-black',
-      name: 'text-sm leading-snug font-black',
+      container: 'w-[120px] sm:w-[130px] h-[166px] sm:h-[180px] p-2 text-xs rounded-2xl',
+      cost: 'w-6 h-6 text-sm font-black',
+      name: 'text-xs sm:text-sm leading-snug font-black',
       stats: 'text-sm font-black',
       statsIcon: 'w-3.5 h-3.5',
-      badge: 'text-[10px] px-1.5 py-0.5',
+      badge: 'text-[9px] px-1.5 py-0.5',
     },
   }[size];
 
