@@ -14,35 +14,26 @@ import { PRESET_DECKS } from '../data/presetDecks';
 import { audioService } from '../utils/AudioService';
 import { GameEngine } from '../engine/gameEngine';
 import { AIService } from '../services/aiService';
-import { CardItem, FACTION_THEMES } from './CardItem';
+import { CardItem } from './CardItem';
+import { PlayerHUD } from './battle/PlayerHUD';
+import { BattlefieldZone } from './battle/BattlefieldZone';
+import { HandZone } from './battle/HandZone';
+import { CombatOverlay } from './battle/CombatOverlay';
+import { CardDetailPanel } from './battle/CardDetailPanel';
+import { GameMenuModal } from './battle/GameMenuModal';
 import { ArchiveOverlay } from './ArchiveOverlay';
 import { ArcanaOverlay } from './ArcanaOverlay';
 import { GameLogOverlay } from './GameLogOverlay';
 import {
   Play,
-  RotateCcw,
+  ArrowRight,
+  Menu,
   Sparkles,
-  Swords,
-  Shield,
-  Heart,
-  Flame,
+  Settings,
+  X,
   Bot,
   User,
-  Zap,
-  Info,
-  X,
-  BookOpen,
-  ArrowRight,
-  Settings,
-  Menu,
-  Wrench,
-  Activity,
-  BarChart3,
-  Bug,
-  HelpCircle,
-  Eye,
-  Check,
-  AlertTriangle,
+  RotateCcw,
 } from 'lucide-react';
 import { AppTab } from './Navbar';
 
@@ -91,19 +82,27 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   // Selection states
   const [selectedHandInstanceId, setSelectedHandInstanceId] = useState<string | null>(null);
   const [selectedAttackerInstanceId, setSelectedAttackerInstanceId] = useState<string | null>(null);
+  const [detailCard, setDetailCard] = useState<CardData | CardInstance | null>(null);
+
+  // Transient Combat Visual Animation State
+  const [combatAnimation, setCombatAnimation] = useState<{
+    type: 'ATTACK' | 'GUARD' | 'DAMAGE' | 'DESTROY' | 'SPELL' | 'EVOLVE';
+    sourceText?: string;
+    targetText?: string;
+    damageAmount?: number;
+  } | null>(null);
 
   // Drag and Drop state
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [hoveredDropZone, setHoveredDropZone] = useState<string | null>(null);
-  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const isLongPressTriggeredRef = useRef<boolean>(false);
 
-  // Overlay modaled views
+  // Overlay Modals
   const [archiveModalTarget, setArchiveModalTarget] = useState<'A' | 'B' | null>(null);
   const [arcanaModalTarget, setArcanaModalTarget] = useState<'A' | 'B' | null>(null);
   const [showLogModal, setShowLogModal] = useState<boolean>(false);
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
-  const [showMenuDrawer, setShowMenuDrawer] = useState<boolean>(false);
+  const [showMenuModal, setShowMenuModal] = useState<boolean>(false);
+  const [isMuted, setIsMuted] = useState<boolean>(audioService.getMuted());
 
   const autoPlayTimerRef = useRef<NodeJS.Timeout | null>(null);
   const matchIdRef = useRef<string>('');
@@ -129,10 +128,6 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     if (autoPlayTimerRef.current) {
       clearInterval(autoPlayTimerRef.current);
       autoPlayTimerRef.current = null;
-    }
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
     }
     setIsAutoPlaying(false);
     isActionExecutingRef.current = false;
@@ -161,47 +156,69 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     setLatestAIDecision(null);
     setSelectedHandInstanceId(null);
     setSelectedAttackerInstanceId(null);
+    setDetailCard(null);
     setDragState(null);
+    setCombatAnimation(null);
 
     const actions = engine.getLegalActions(state);
     setLegalActions(actions);
+    audioService.playTurn();
   };
 
   useEffect(() => {
     startNewMatch();
     return () => {
       if (autoPlayTimerRef.current) clearInterval(autoPlayTimerRef.current);
-      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
       matchIdRef.current = '';
     };
   }, [deckAId, deckBId]);
 
-  const playActionAudio = (action: Action, prevState?: GameState, nextState?: GameState) => {
+  // Audio and Animation dispatcher
+  const triggerActionFeedback = (action: Action, prevState?: GameState, nextState?: GameState) => {
     switch (action.type) {
       case 'PLAY_UNIT':
         audioService.playSummon();
+        setCombatAnimation({ type: 'ATTACK', sourceText: 'ユニット召喚' });
         break;
       case 'EVOLVE':
         audioService.playEvolve();
+        setCombatAnimation({ type: 'EVOLVE', sourceText: 'ユニット進化！' });
         break;
       case 'PLAY_SPELL':
         audioService.playSpell();
+        setCombatAnimation({ type: 'SPELL', sourceText: 'スペル詠唱' });
         break;
-      case 'ATTACK':
+      case 'ATTACK': {
         audioService.playAttack();
+        const payload = action.payload as any;
+        const targetDesc = payload?.targetType === 'PLAYER' ? '結界へ直接攻撃！' : 'ユニット迎撃！';
+        setCombatAnimation({
+          type: 'ATTACK',
+          sourceText: '攻撃宣言',
+          targetText: targetDesc,
+        });
         break;
+      }
       case 'GUARD':
         if ((action.payload as any)?.doGuard) {
           audioService.playGuard();
+          setCombatAnimation({ type: 'GUARD', sourceText: 'ガード防御発動！' });
         }
         break;
       case 'SET_RUNE':
+        audioService.playRune();
+        break;
       case 'PLAY_DOMAIN':
-        audioService.playSpell();
+        audioService.playDomain();
+        setCombatAnimation({ type: 'SPELL', sourceText: '領域(ドメイン)展開' });
+        break;
+      case 'END_TURN':
+        audioService.playTurn();
         break;
       default:
         break;
     }
+
     if (prevState && nextState) {
       if (nextState.playerA.barrier < prevState.playerA.barrier || nextState.playerB.barrier < prevState.playerB.barrier) {
         audioService.playDamage();
@@ -214,9 +231,14 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         audioService.playDestroy();
       }
     }
+
+    // Auto clear combat animation after 900ms
+    setTimeout(() => {
+      setCombatAnimation(null);
+    }, 900);
   };
 
-  // Execute an action with synchronous locking and matchId check
+  // Execute Action
   const handleExecuteAction = (action: Action) => {
     if (!gameState || gameState.gameStatus !== 'IN_PROGRESS' || isProcessingStep || isActionExecutingRef.current) {
       return;
@@ -232,7 +254,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       const { nextState, log } = engine.step(gameState, action);
       verifyGameInvariants(nextState, `Action_${action.type}`);
 
-      playActionAudio(action, gameState, nextState);
+      triggerActionFeedback(action, gameState, nextState);
       setGameState(nextState);
       setGameLogs((prev) => [...prev, log]);
 
@@ -250,7 +272,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     }
   };
 
-  // Perform AI turn execution with matchId guard
+  // AI Turn Execution
   const executeAITurn = async () => {
     if (!gameState || gameState.gameStatus !== 'IN_PROGRESS' || isProcessingStep || isActionExecutingRef.current) {
       return;
@@ -285,17 +307,14 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         useGeminiForAI
       );
 
-      // Race condition check: make sure user didn't reset match while AI was thinking
-      if (matchIdRef.current !== currentMatch) {
-        return;
-      }
+      if (matchIdRef.current !== currentMatch) return;
 
       setLatestAIDecision(decision);
 
       const { nextState, log } = engine.step(gameState, decision.selectedAction);
       verifyGameInvariants(nextState, `AI_Action_${decision.selectedAction.type}`);
 
-      playActionAudio(decision.selectedAction, gameState, nextState);
+      triggerActionFeedback(decision.selectedAction, gameState, nextState);
       setGameState(nextState);
       setGameLogs((prev) => [...prev, log]);
 
@@ -309,7 +328,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     }
   };
 
-  // Trigger AI turn automatically when active player is AI
+  // Auto trigger AI turns
   useEffect(() => {
     if (!gameState || gameState.gameStatus !== 'IN_PROGRESS' || isProcessingStep) return;
 
@@ -326,29 +345,18 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     if (isCurrentAI && isAutoPlaying) {
       const timer = setTimeout(() => {
         executeAITurn();
-      }, 350);
+      }, 450);
       return () => clearTimeout(timer);
     }
   }, [gameState, isAutoPlaying, playerAIsAI, playerBIsAI]);
 
-  // ==========================================
-  // Pointer-based Drag & Drop Handlers
-  // ==========================================
+  // Pointer drag handlers
   const handlePointerDown = (
     e: React.PointerEvent,
     card: CardData | CardInstance,
     source: 'HAND' | 'PLAYER_UNIT' | 'GUARD_UNIT'
   ) => {
     if (!isHumanTurn || isProcessingStep) return;
-
-    isLongPressTriggeredRef.current = false;
-    const baseCard = 'baseCard' in card ? card.baseCard : card;
-
-    // Start long-press timer for 450ms inspect
-    // No long press
-    isLongPressTriggeredRef.current = false;
-    onInspectCard(baseCard);
-    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
 
     setDragState({
       card,
@@ -368,25 +376,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     const dy = e.clientY - dragState.startY;
     const distSq = dx * dx + dy * dy;
 
-    // If moved > 8px, cancel long-press and initiate active drag
     if (distSq > 64) {
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-        longPressTimerRef.current = null;
-      }
-
       setDragState((prev) =>
-        prev
-          ? {
-              ...prev,
-              currentX: e.clientX,
-              currentY: e.clientY,
-              isDragging: true,
-            }
-          : null
+        prev ? { ...prev, currentX: e.clientX, currentY: e.clientY, isDragging: true } : null
       );
 
-      // Detect element under pointer
       const elem = document.elementFromPoint(e.clientX, e.clientY);
       if (elem) {
         const dropZoneElem = elem.closest('[data-dropzone]');
@@ -400,31 +394,16 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     }
   };
 
-  const handlePointerUp = (e: React.PointerEvent) => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-
+  const handlePointerUp = () => {
     if (!dragState) return;
-
-    if (isLongPressTriggeredRef.current) {
-      setDragState(null);
-      setHoveredDropZone(null);
-      return;
-    }
 
     const { card, source, isDragging } = dragState;
     const cardInstId = 'instanceId' in card ? card.instanceId : undefined;
 
     if (isDragging && cardInstId) {
-      // 1. Hand Card Dragged
+      // 1. Hand card drop
       if (source === 'HAND') {
-        // Drop on Arcana Zone in ARCANA phase
-        if (
-          gameState?.phase === 'ARCANA' &&
-          (hoveredDropZone === 'ARCANA_ZONE' || hoveredDropZone === 'PLAYER_ARCANA')
-        ) {
+        if (gameState?.phase === 'ARCANA' && (hoveredDropZone === 'ARCANA_ZONE' || hoveredDropZone === 'PLAYER_ARCANA')) {
           const arcAction = legalActions.find(
             (a) => a.action.type === 'SET_ARCANA' && (a.action.payload as any)?.cardInstanceId === cardInstId
           );
@@ -436,7 +415,6 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           }
         }
 
-        // Drop on Battlefield in ACTION phase
         if (gameState?.phase === 'ACTION' && hoveredDropZone === 'PLAYER_BATTLEFIELD') {
           const playAction = legalActions.find(
             (a) =>
@@ -454,7 +432,6 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           }
         }
 
-        // Drop on Base Unit for Evolution
         if (gameState?.phase === 'ACTION' && hoveredDropZone?.startsWith('UNIT_A_')) {
           const baseUnitInstId = hoveredDropZone.replace('UNIT_A_', '');
           const evolveAction = legalActions.find(
@@ -472,9 +449,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         }
       }
 
-      // 2. Unit Dragged for Attack
+      // 2. Unit attack drop
       if (source === 'PLAYER_UNIT') {
-        // Direct Attack on Opponent Leader
         if (hoveredDropZone === 'OPPONENT_LEADER' || hoveredDropZone === 'OPPONENT_HP') {
           const leaderAttack = legalActions.find(
             (a) =>
@@ -490,7 +466,6 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           }
         }
 
-        // Attack on Opponent Unit
         if (hoveredDropZone?.startsWith('UNIT_B_')) {
           const targetUnitInstId = hoveredDropZone.replace('UNIT_B_', '');
           const unitAttack = legalActions.find(
@@ -509,7 +484,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         }
       }
 
-      // 3. Guard Unit Dragged in GUARD_STEP
+      // 3. Guard unit drop
       if (source === 'GUARD_UNIT') {
         if (hoveredDropZone === 'COMBAT_ZONE' || hoveredDropZone === 'OPPONENT_BATTLEFIELD') {
           const guardAction = legalActions.find(
@@ -526,24 +501,6 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           }
         }
       }
-    } else if (!isDragging && cardInstId) {
-      // Tap / Click Handler
-      if (source === 'HAND') {
-        // In ARCANA phase, single tap on hand card shows direct Arcana placement action or toggles
-        setSelectedHandInstanceId(selectedHandInstanceId === cardInstId ? null : cardInstId);
-        setSelectedAttackerInstanceId(null);
-      } else if (source === 'PLAYER_UNIT') {
-        setSelectedAttackerInstanceId(selectedAttackerInstanceId === cardInstId ? null : cardInstId);
-        setSelectedHandInstanceId(null);
-      } else if (source === 'GUARD_UNIT') {
-        const guardAction = legalActions.find(
-          (a) =>
-            a.action.type === 'GUARD' &&
-            (a.action.payload as any)?.guardInstanceId === cardInstId &&
-            (a.action.payload as any)?.doGuard === true
-        );
-        if (guardAction) handleExecuteAction(guardAction.action);
-      }
     }
 
     setDragState(null);
@@ -553,7 +510,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   if (!gameState) {
     return (
       <div className="h-full w-full flex items-center justify-center text-stone-400 bg-stone-950">
-        ゲーム盤面を初期化中...
+        対戦画面を構築中...
       </div>
     );
   }
@@ -563,7 +520,6 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   const activeArcanaCountA = pA.arcana.filter((a) => !a.isRested).length;
   const activeArcanaCountB = pB.arcana.filter((a) => !a.isRested).length;
 
-  // Determine current responding player for reactive phases
   let respondingPlayerId = gameState.activePlayer;
   if (gameState.phase === 'GUARD_STEP' && gameState.pendingCombat) {
     respondingPlayerId = engine.getOpponent(gameState, gameState.pendingCombat.attackerPlayerId).playerId;
@@ -572,39 +528,20 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   }
   const isHumanTurn = respondingPlayerId === 'PLAYER_A' ? !playerAIsAI : !playerBIsAI;
 
-  // Legal actions for selected hand card
-  const selectedHandActions = legalActions.filter(
-    (leg) =>
-      selectedHandInstanceId &&
-      ((leg.action.payload as any)?.cardInstanceId === selectedHandInstanceId ||
-        (leg.action.payload as any)?.evolveTargetInstanceId === selectedHandInstanceId)
-  );
-
-  // Legal attacks for selected attacker
   const legalAttacksForSelectedAttacker = legalActions.filter(
     (leg) =>
       leg.action.type === 'ATTACK' &&
       (leg.action.payload as any)?.attackerInstanceId === selectedAttackerInstanceId
   );
-  const canAttackOpponentPlayer = legalAttacksForSelectedAttacker.some(
+  const canAttackOpponentLeader = legalAttacksForSelectedAttacker.some(
     (a) => (a.action.payload as any)?.targetType === 'PLAYER'
   );
 
-  // Pass Action (Turn End, Skip Arcana, Guard Pass, Rune Pass)
   const passAction = legalActions.find((a) => a.category === 'PASS');
-
-  // Check if Arcana placement is currently legal for Player A
   const canPlaceArcana =
     gameState.phase === 'ARCANA' &&
     isHumanTurn &&
     legalActions.some((a) => a.action.type === 'SET_ARCANA');
-
-  // Determine pending attacker card for combat animation
-  const pendingAttackerUnit = gameState.pendingCombat
-    ? engine
-        .getPlayer(gameState, gameState.pendingCombat.attackerPlayerId)
-        .battlefield.find((u) => u.instanceId === gameState.pendingCombat!.attackerInstanceId)
-    : null;
 
   return (
     <div
@@ -615,406 +552,150 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         setDragState(null);
         setHoveredDropZone(null);
       }}
-      className="h-full w-full flex flex-col justify-between bg-stone-950 text-stone-100 overflow-hidden relative select-none"
+      className="h-[100dvh] w-screen flex flex-col justify-between bg-stone-950 text-stone-100 overflow-hidden relative select-none"
+      style={{
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        paddingLeft: 'env(safe-area-inset-left, 0px)',
+        paddingRight: 'env(safe-area-inset-right, 0px)',
+      }}
     >
       {/* ============================================================ */}
-      {/* 1. TOP OPPONENT AREA: Minimal HUD + Opponent Hand */}
+      {/* 1. TOP OPPONENT AREA: Minimal HUD + Quick Menu Trigger */}
       {/* ============================================================ */}
-      <div className="w-full shrink-0 flex items-center justify-between px-2 pt-1 pb-0.5 border-b border-stone-800/60 bg-stone-950/80 z-20">
-        {/* Left: Opponent Info Chip */}
-        <div className="flex items-center gap-1.5">
-          <div className="flex items-center gap-1 bg-stone-900/90 border border-stone-700/80 px-2 py-0.5 rounded-full text-xs text-sky-300 shadow-sm">
-            <div className="w-4 h-4 rounded-full bg-sky-950 border border-sky-400 flex items-center justify-center text-[9px]">
-              {playerBIsAI ? <Bot className="w-2.5 h-2.5" /> : <User className="w-2.5 h-2.5" />}
-            </div>
-            <span className="font-black truncate max-w-[80px] sm:max-w-[120px]">{pB.name}</span>
-          </div>
-
-          {/* Opponent HP / Barrier (Targetable during attacks) */}
-          <div
-            data-dropzone="OPPONENT_LEADER"
-            onClick={() => {
-              if (selectedAttackerInstanceId && canAttackOpponentPlayer) {
-                const attackLeader = legalAttacksForSelectedAttacker.find(
-                  (a) => (a.action.payload as any)?.targetType === 'PLAYER'
-                );
-                if (attackLeader) handleExecuteAction(attackLeader.action);
-              }
+      <div className="w-full shrink-0 flex items-center justify-between px-2 pt-1 pb-0.5 z-20">
+        <div className="flex-1 max-w-2xl">
+          <PlayerHUD
+            player={pB}
+            isOpponent={true}
+            isAI={playerBIsAI}
+            activeArcanaCount={activeArcanaCountB}
+            isTargetableForAttack={canAttackOpponentLeader}
+            isHoveredDropZone={hoveredDropZone === 'OPPONENT_LEADER'}
+            onOpenArchive={() => setArchiveModalTarget('B')}
+            onOpenArcana={() => setArcanaModalTarget('B')}
+            onInspectCard={(c) => setDetailCard(c)}
+            onSelectLeaderAttack={() => {
+              const attackLeader = legalAttacksForSelectedAttacker.find(
+                (a) => (a.action.payload as any)?.targetType === 'PLAYER'
+              );
+              if (attackLeader) handleExecuteAction(attackLeader.action);
             }}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded-full border transition-all ${
-              selectedAttackerInstanceId && canAttackOpponentPlayer
-                ? 'bg-rose-950 border-rose-500 ring-2 ring-rose-400 cursor-pointer animate-target-glow scale-105'
-                : hoveredDropZone === 'OPPONENT_LEADER'
-                ? 'bg-rose-900 border-rose-400 ring-4 ring-rose-400 scale-110'
-                : 'bg-stone-900 border-stone-800'
-            }`}
-            title="相手リーダー結界"
-          >
-            <Shield className="w-3 h-3 text-rose-500 fill-rose-500" />
-            <span className="text-[9px] text-rose-300 font-bold">結界</span>
-            <span className="text-xs font-black font-mono text-white">{pB.barrier}</span>
-            <span className="text-[9px] text-stone-500 font-mono">/5</span>
-            {selectedAttackerInstanceId && canAttackOpponentPlayer && (
-              <span className="text-[8px] font-black bg-rose-600 text-white px-1 rounded animate-pulse">
-                攻撃可
-              </span>
-            )}
-          </div>
-
-          {/* Deck, Archive, Arcana Compact Badges */}
-          <div className="flex items-center gap-1 text-[10px] font-mono">
-            <span className="px-1.5 py-0.5 rounded bg-stone-900 border border-stone-800 text-stone-400">
-              D:{pB.deck.length}
-            </span>
-
-            <button
-              onClick={() => setArchiveModalTarget('B')}
-              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-stone-900 hover:bg-stone-800 border border-stone-800 hover:border-sky-400 text-stone-300"
-              title="相手の墓地 (アーカイブ)"
-            >
-              <BookOpen className="w-2.5 h-2.5 text-stone-400" />
-              <span>{pB.archive.length}</span>
-            </button>
-
-            <button
-              onClick={() => setArcanaModalTarget('B')}
-              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-stone-900 hover:bg-stone-800 border border-stone-800 hover:border-sky-400 text-sky-300 font-bold"
-              title="相手のアルカナ"
-            >
-              <Flame className="w-2.5 h-2.5 text-sky-400" />
-              <span>{activeArcanaCountB}/{pB.arcana.length}</span>
-            </button>
-          </div>
+          />
         </div>
 
-        {/* Center: Opponent Stacked Hand Cards */}
-        <div className="flex items-center justify-center -space-x-4 overflow-hidden max-w-[200px] sm:max-w-[280px]">
-          {pB.hand.map((_, i) => (
-            <div
-              key={i}
-              className="w-7 h-10 rounded bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 border border-stone-700 shadow-sm shrink-0 flex items-center justify-center text-[8px] text-stone-500 font-mono"
-            >
-              ★
-            </div>
-          ))}
-        </div>
-
-        {/* Right: Quick Menu & Settings Button */}
-        <div className="flex items-center gap-1">
+        {/* Top Right Quick Menu & Auto Battle Toggle */}
+        <div className="flex items-center gap-1.5 ml-2">
           <button
             onClick={() => setIsAutoPlaying(!isAutoPlaying)}
-            className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border transition-all ${
+            className={`px-2.5 py-1 rounded-full text-xs font-black flex items-center gap-1 border transition-all ${
               isAutoPlaying
                 ? 'bg-emerald-600 text-white border-emerald-400 animate-pulse'
-                : 'bg-stone-800 text-stone-300 border-stone-700 hover:bg-stone-700'
+                : 'bg-stone-900 text-stone-300 border-stone-700 hover:bg-stone-800'
             }`}
-            title="AI自動対戦の開始/停止"
+            title="AIオート対戦の切り替え"
           >
-            <Play className="w-2.5 h-2.5 fill-current" />
-            <span>{isAutoPlaying ? 'AUTO中' : 'AUTO'}</span>
+            <Play className="w-3 h-3 fill-current" />
+            <span className="text-[11px]">{isAutoPlaying ? 'AUTO中' : 'AUTO'}</span>
           </button>
 
           <button
             id="open-game-menu-btn"
-            onClick={() => setShowMenuDrawer(true)}
-            className="p-1 rounded-full bg-stone-900 hover:bg-stone-800 text-stone-300 hover:text-white border border-stone-700 transition-colors"
-            title="対戦メニュー"
+            onClick={() => setShowMenuModal(true)}
+            className="p-1.5 rounded-full bg-stone-900 hover:bg-stone-800 text-stone-300 hover:text-white border border-stone-700 transition-colors shadow-sm"
+            title="対戦メニューを開く"
           >
-            <Menu className="w-3.5 h-3.5" />
+            <Menu className="w-4 h-4" />
           </button>
         </div>
       </div>
 
       {/* ============================================================ */}
-      {/* 2. OPPONENT BATTLEFIELD (Top Half Battlefield) */}
+      {/* 2. OPPONENT BATTLEFIELD (Field B) */}
       {/* ============================================================ */}
-      <div
-        data-dropzone="OPPONENT_BATTLEFIELD"
-        className="flex-1 w-full flex items-center justify-center gap-2 px-3 py-1 overflow-x-auto relative z-10"
-      >
-        {pB.battlefield.length === 0 ? (
-          <div className="text-[10px] text-stone-600 italic tracking-widest font-mono">
-            OPPONENT FIELD
-          </div>
-        ) : (
-          pB.battlefield.map((unit) => {
-            const isTargetableForAttack = legalAttacksForSelectedAttacker.some(
-              (a) =>
-                (a.action.payload as any)?.targetType === 'UNIT' &&
-                (a.action.payload as any)?.targetUnitInstanceId === unit.instanceId
-            );
-
-            return (
-              <div
-                key={unit.instanceId}
-                data-dropzone={`UNIT_B_${unit.instanceId}`}
-                className="relative shrink-0"
-              >
-                <CardItem
-                  card={unit}
-                  size="xs"
-                  isInteractive={true}
-                  isTargetable={isTargetableForAttack}
-                  onInspect={onInspectCard}
-                  onClick={() => {
-                    if (selectedAttackerInstanceId && isTargetableForAttack) {
-                      const attackAction = legalAttacksForSelectedAttacker.find(
-                        (a) =>
-                          (a.action.payload as any)?.targetType === 'UNIT' &&
-                          (a.action.payload as any)?.targetUnitInstanceId === unit.instanceId
-                      );
-                      if (attackAction) handleExecuteAction(attackAction.action);
-                    } else {
-                      onInspectCard(unit.baseCard);
-                    }
-                  }}
-                />
-              </div>
-            );
-          })
-        )}
-      </div>
+      <BattlefieldZone
+        units={pB.battlefield}
+        isOpponent={true}
+        selectedAttackerInstanceId={selectedAttackerInstanceId}
+        legalActions={legalActions}
+        isHumanTurn={isHumanTurn}
+        phase={gameState.phase}
+        hoveredDropZone={hoveredDropZone}
+        dragSource={dragState?.source}
+        onSelectAttacker={setSelectedAttackerInstanceId}
+        onInspectCard={(c) => setDetailCard(c)}
+        onExecuteAction={handleExecuteAction}
+        onPointerDownUnit={(e, u) => handlePointerDown(e, u, 'GUARD_UNIT')}
+      />
 
       {/* ============================================================ */}
-      {/* 3. CENTER BATTLE STRIP: Minimal Turn HUD & Action Prompts */}
+      {/* 3. CENTER BATTLE DIVIDER & COMBAT ANIMATIONS */}
       {/* ============================================================ */}
-      <div
-        data-dropzone="COMBAT_ZONE"
-        className="w-full shrink-0 flex items-center justify-between px-3 py-0.5 bg-stone-900/60 border-y border-stone-800/80 backdrop-blur-xs z-20"
-      >
-        {/* Left: Turn & Phase Indicator */}
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-black text-amber-400 font-mono tracking-wider">
-            TURN {gameState.turnNumber}
-          </span>
-          <span
-            className={`text-[9px] font-black px-1.5 py-0.5 rounded-full border ${
-              gameState.phase === 'ARCANA'
-                ? 'bg-amber-950 text-amber-300 border-amber-500'
-                : gameState.phase === 'ACTION'
-                ? 'bg-sky-950 text-sky-300 border-sky-500'
-                : gameState.phase === 'GUARD_STEP'
-                ? 'bg-rose-950 text-rose-300 border-rose-500 animate-pulse'
-                : gameState.phase === 'RUNE_STEP'
-                ? 'bg-purple-950 text-purple-300 border-purple-500 animate-bounce'
-                : 'bg-stone-800 text-stone-300 border-stone-600'
-            }`}
-          >
-            {gameState.phase === 'ARCANA'
-              ? 'アルカナフェイズ'
-              : gameState.phase === 'ACTION'
-              ? 'メイン行動'
-              : gameState.phase === 'GUARD_STEP'
-              ? 'ガードステップ'
-              : gameState.phase === 'RUNE_STEP'
-              ? 'ルーン誘発'
-              : 'ドロー'}
-          </span>
-        </div>
-
-        {/* Center: Dynamic Tactical Prompt */}
-        <div className="flex items-center gap-1.5 text-xs">
-          {gameState.phase === 'EFFECT_RESOLUTION' && isHumanTurn ? (
-            <span className="text-indigo-300 font-bold flex items-center gap-1">
-              <Zap className="w-3.5 h-3.5 text-indigo-400 animate-bounce" />
-              手札からアルカナに置くカードを選択、またはスキップしてください
-            </span>
-          ) : gameState.phase === 'GUARD_STEP' && isHumanTurn ? (
-            <span className="text-rose-300 font-bold flex items-center gap-1">
-              <Shield className="w-3.5 h-3.5 text-rose-400 animate-bounce" />
-              相手の攻撃！ガードするユニットを選択、またはスルーしてください
-            </span>
-          ) : gameState.phase === 'RUNE_STEP' && isHumanTurn ? (
-            <span className="text-purple-300 font-bold flex items-center gap-1">
-              <Zap className="w-3.5 h-3.5 text-purple-400 animate-bounce" />
-              ルーン誘発！発動しますか？
-            </span>
-          ) : gameState.phase === 'ARCANA' && isHumanTurn ? (
-            <span className="text-amber-300 font-bold flex items-center gap-1">
-              <Flame className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-              手札をアルカナにドラッグ、またはカードをタップしてセットしてください
-            </span>
-          ) : selectedAttackerInstanceId ? (
-            <span className="text-rose-300 font-bold flex items-center gap-1">
-              <Swords className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
-              攻撃対象（相手ユニットまたは相手結界）を選択してください
-            </span>
-          ) : (
-            <span className="text-stone-400 text-[11px]">
-              {isHumanTurn ? 'あなたの行動番です' : '相手の行動中...'}
-            </span>
-          )}
-        </div>
-
-        {/* Right: Quick In-Context Actions (Skip Arcana, Pass Guard, Cancel Attack) */}
-        <div className="flex items-center gap-1">
-          {selectedAttackerInstanceId && (
-            <button
-              onClick={() => setSelectedAttackerInstanceId(null)}
-              className="px-2 py-0.5 rounded bg-stone-800 hover:bg-stone-700 text-stone-300 text-[10px] font-bold border border-stone-600"
-            >
-              攻撃解除
-            </button>
-          )}
-
-          {gameState.phase === 'ARCANA' && isHumanTurn && passAction && (
-            <button
-              onClick={() => handleExecuteAction(passAction.action)}
-              className="px-2 py-0.5 rounded bg-stone-800 hover:bg-stone-700 text-amber-300 text-[10px] font-bold border border-stone-600"
-            >
-              アルカナスキップ
-            </button>
-          )}
-
-          {gameState.phase === 'EFFECT_RESOLUTION' && isHumanTurn && (
-            <button
-              onClick={() => { const skip = legalActions.find(a => a.category === 'RESOLVE' && (a.action.payload as any)?.doResolve === false); if(skip) handleExecuteAction(skip.action); }}
-              className="px-2.5 py-0.5 rounded bg-indigo-950 hover:bg-indigo-900 text-indigo-200 text-[10px] font-bold border border-indigo-600"
-            >
-              スキップ
-            </button>
-          )}
-          {gameState.phase === 'GUARD_STEP' && isHumanTurn && passAction && (
-            <button
-              onClick={() => handleExecuteAction(passAction.action)}
-              className="px-2.5 py-0.5 rounded bg-rose-950 hover:bg-rose-900 text-rose-200 text-[10px] font-bold border border-rose-600"
-            >
-              スルー（防御しない）
-            </button>
-          )}
-        </div>
-      </div>
+      <CombatOverlay
+        gameState={gameState}
+        legalActions={legalActions}
+        isHumanTurn={isHumanTurn}
+        selectedAttackerInstanceId={selectedAttackerInstanceId}
+        combatAnimation={combatAnimation}
+        onClearAttacker={() => setSelectedAttackerInstanceId(null)}
+        onExecuteAction={handleExecuteAction}
+      />
 
       {/* ============================================================ */}
-      {/* 4. PLAYER BATTLEFIELD (Bottom Half Battlefield) */}
+      {/* 4. PLAYER BATTLEFIELD (Field A) */}
       {/* ============================================================ */}
-      <div
-        data-dropzone="PLAYER_BATTLEFIELD"
-        className={`flex-1 w-full flex items-center justify-center gap-2 px-3 py-1 overflow-x-auto relative z-10 transition-colors ${
-          dragState?.source === 'HAND' && gameState.phase === 'ACTION'
-            ? 'bg-emerald-950/20 ring-1 ring-emerald-500/40 rounded-xl'
-            : ''
-        }`}
-      >
-        {pA.battlefield.length === 0 ? (
-          <div className="text-[10px] text-stone-600 italic tracking-widest font-mono">
-            {dragState?.source === 'HAND' && gameState.phase === 'ACTION'
-              ? 'ここにドロップして召喚・発動'
-              : 'YOUR FIELD'}
-          </div>
-        ) : (
-          pA.battlefield.map((unit) => {
-            const canAttack = legalActions.some(
-              (a) =>
-                a.action.type === 'ATTACK' &&
-                (a.action.payload as any)?.attackerInstanceId === unit.instanceId
-            );
-            const isGuardTarget = legalActions.some(
-              (a) =>
-                a.action.type === 'GUARD' &&
-                (a.action.payload as any)?.guardInstanceId === unit.instanceId
-            );
-            const isSelectedAttacker = selectedAttackerInstanceId === unit.instanceId;
-
-            return (
-              <div
-                key={unit.instanceId}
-                data-dropzone={`UNIT_A_${unit.instanceId}`}
-                onPointerDown={(e) =>
-                  handlePointerDown(
-                    e,
-                    unit,
-                    gameState.phase === 'GUARD_STEP' ? 'GUARD_UNIT' : 'PLAYER_UNIT'
-                  )
-                }
-                className="relative shrink-0"
-              >
-                <CardItem
-                  card={unit}
-                  size="xs"
-                  isInteractive={true}
-                  isSelected={isSelectedAttacker}
-                  isPlayable={canAttack && !selectedAttackerInstanceId && isHumanTurn}
-                  isGuardable={isGuardTarget && isHumanTurn}
-                  onInspect={onInspectCard}
-                />
-              </div>
-            );
-          })
-        )}
-      </div>
+      <BattlefieldZone
+        units={pA.battlefield}
+        isOpponent={false}
+        selectedAttackerInstanceId={selectedAttackerInstanceId}
+        legalActions={legalActions}
+        isHumanTurn={isHumanTurn}
+        phase={gameState.phase}
+        hoveredDropZone={hoveredDropZone}
+        dragSource={dragState?.source}
+        onSelectAttacker={(id) => {
+          setSelectedAttackerInstanceId(id);
+          setSelectedHandInstanceId(null);
+        }}
+        onInspectCard={(c) => setDetailCard(c)}
+        onExecuteAction={handleExecuteAction}
+        onPointerDownUnit={(e, u) =>
+          handlePointerDown(e, u, gameState.phase === 'GUARD_STEP' ? 'GUARD_UNIT' : 'PLAYER_UNIT')
+        }
+      />
 
       {/* ============================================================ */}
-      {/* 5. PLAYER HUD & FAN/OVERLAPPING HAND (Bottom Area) */}
+      {/* 5. PLAYER BOTTOM ZONE: Hand, HUD & End Turn Action */}
       {/* ============================================================ */}
-      <div className="w-full shrink-0 flex items-center justify-between px-2 pt-0.5 pb-1 border-t border-stone-800/60 bg-stone-950/90 relative z-30">
-        {/* Left: Player Info & Arcana Drop Target */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          {/* Player Identity */}
-          <div className="flex items-center gap-1 bg-stone-900/90 border border-stone-700/80 px-2 py-0.5 rounded-full text-xs text-amber-300 shadow-sm">
-            <div className="w-4 h-4 rounded-full bg-amber-950 border border-amber-400 flex items-center justify-center text-[9px]">
-              {playerAIsAI ? <Bot className="w-2.5 h-2.5" /> : <User className="w-2.5 h-2.5" />}
-            </div>
-            <span className="font-black truncate max-w-[80px] sm:max-w-[120px]">{pA.name}</span>
-          </div>
+      <div className="w-full shrink-0 flex flex-col z-30">
+        {/* Dynamic Responsive Hand Zone */}
+        <HandZone
+          hand={pA.hand}
+          selectedHandInstanceId={selectedHandInstanceId}
+          legalActions={legalActions}
+          phase={gameState.phase}
+          isHumanTurn={isHumanTurn}
+          onSelectCard={(id) => {
+            setSelectedHandInstanceId(id);
+            setSelectedAttackerInstanceId(null);
+          }}
+          onInspectCard={(c) => setDetailCard(c)}
+          onExecuteAction={handleExecuteAction}
+          onPointerDownCard={(e, card) => handlePointerDown(e, card, 'HAND')}
+        />
 
-          
-          {/* Mute Button */}
-          <button onClick={() => audioService.toggleMute()} className="ml-2 px-2 py-0.5 text-[10px] border border-stone-600 rounded bg-stone-800 text-stone-300">
-            SOUNDS
-          </button>
-
-          {/* Player HP / Barrier */}
-          <div className="flex items-center gap-1 bg-stone-900 px-2 py-0.5 rounded-full border border-stone-800" title="プレイヤー結界">
-            <Shield className="w-3 h-3 text-rose-500 fill-rose-500" />
-            <span className="text-[9px] text-rose-300 font-bold">結界</span>
-            <span className="text-xs font-black font-mono text-white">{pA.barrier}</span>
-            <span className="text-[9px] text-stone-500 font-mono">/5</span>
-          </div>
-
-          {/* Deck, Archive, Arcana (ARCANA is prominent drop target during ARCANA phase) */}
-          <div className="flex items-center gap-1 text-[10px] font-mono">
-            <span className="px-1.5 py-0.5 rounded bg-stone-900 border border-stone-800 text-stone-400">
-              D:{pA.deck.length}
-            </span>
-
-            <button
-              onClick={() => setArchiveModalTarget('A')}
-              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-stone-900 hover:bg-stone-800 border border-stone-800 hover:border-amber-400 text-stone-300"
-              title="あなたの墓地 (アーカイブ)"
-            >
-              <BookOpen className="w-2.5 h-2.5 text-stone-400" />
-              <span>{pA.archive.length}</span>
-            </button>
-
-            
-          {/* Player Domain & Runes */}
-          <div className="flex gap-1 items-center bg-stone-900 border border-stone-800 p-1 rounded-md ml-2">
-            <div className="text-[9px] text-stone-500 font-bold px-1">DOMAIN</div>
-            {pA.domain ? (
-               <div className="w-10 h-14 bg-indigo-900/50 border border-indigo-400 rounded cursor-pointer overflow-hidden relative" onClick={() => onInspectCard(pA.domain.baseCard)}>
-                 <div className="absolute inset-0 flex items-center justify-center text-[8px] text-center font-bold text-indigo-200">{pA.domain.baseCard.name}</div>
-               </div>
-            ) : <div className="w-10 h-14 border border-dashed border-stone-700 rounded opacity-30" />}
-            
-            <div className="text-[9px] text-stone-500 font-bold px-1 ml-2">RUNES</div>
-            {[0, 1].map(i => {
-              const rune = pA.runes[i];
-              return rune ? (
-                <div key={i} className="w-10 h-14 bg-stone-800 border-2 border-purple-500 rounded-md relative shadow-md cursor-pointer overflow-hidden" onClick={() => onInspectCard(rune.baseCard)}>
-                   <div className="absolute inset-0 flex items-center justify-center text-[8px] text-center font-bold text-purple-200">{rune.baseCard.name}</div>
-                </div>
-              ) : (
-                <div key={i} className="w-10 h-14 border border-dashed border-stone-700 rounded opacity-30" />
-              )
-            })}
-          </div>
-
-            {/* Arcana Slot & Drop Target */}
-            <button
-              id="player-arcana-hud"
-              data-dropzone="ARCANA_ZONE"
-              onClick={() => {
+        {/* Player Bottom HUD Bar */}
+        <div className="w-full flex items-center justify-between px-2 sm:px-4 py-1 bg-stone-950/95 border-t border-stone-800/80">
+          <div className="flex-1 max-w-3xl">
+            <PlayerHUD
+              player={pA}
+              isOpponent={false}
+              isAI={playerAIsAI}
+              activeArcanaCount={activeArcanaCountA}
+              canPlaceArcana={canPlaceArcana}
+              isHoveredDropZone={hoveredDropZone === 'ARCANA_ZONE'}
+              onOpenArchive={() => setArchiveModalTarget('A')}
+              onOpenArcana={() => {
                 if (selectedHandInstanceId && gameState.phase === 'ARCANA') {
                   const arcAction = legalActions.find(
                     (a) =>
@@ -1028,139 +709,27 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                 }
                 setArcanaModalTarget('A');
               }}
-              className={`flex items-center gap-0.5 px-2 py-0.5 rounded-full border font-bold transition-all ${
-                canPlaceArcana
-                  ? 'bg-amber-950 border-amber-400 ring-2 ring-amber-400 text-amber-200 animate-pulse-ring'
-                  : hoveredDropZone === 'ARCANA_ZONE'
-                  ? 'bg-amber-900 border-amber-300 ring-4 ring-amber-300 text-white scale-110'
-                  : 'bg-stone-900 hover:bg-stone-800 border-stone-800 text-amber-300'
-              }`}
-              title={selectedHandInstanceId && gameState.phase === 'ARCANA' ? '選択したカードをアルカナにセット' : 'アルカナ確認 / 手札をドロップしてセット'}
-            >
-              <Flame className="w-3 h-3 text-amber-400 fill-amber-400" />
-              <span>アルカナ:</span>
-              <strong className="text-white font-mono">{activeArcanaCountA}/{pA.arcana.length}</strong>
-            </button>
+              onInspectCard={(c) => setDetailCard(c)}
+            />
           </div>
-        </div>
 
-        {/* Center: Fan / Overlapping Hand Cards */}
-        <div className="flex-1 flex items-end justify-center px-2 pb-0.5 relative">
-          <div className="flex items-end justify-center transition-all max-w-full">
-            {pA.hand.length === 0 ? (
-              <div className="text-[10px] text-stone-600 italic py-4 font-mono">手札なし</div>
+          {/* Prominent End Turn Button at Bottom-Right */}
+          <div className="shrink-0 ml-3">
+            {passAction && gameState.phase === 'ACTION' && isHumanTurn ? (
+              <button
+                id="end-turn-btn"
+                onClick={() => handleExecuteAction(passAction.action)}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black text-xs shadow-xl shadow-amber-600/30 border border-amber-300 active:scale-95 transition-all flex items-center gap-1.5"
+              >
+                <span>ターン終了</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
             ) : (
-              pA.hand.map((card, index) => {
-                const isPlayable = legalActions.some(
-                  (a) =>
-                    (a.action.payload as any)?.cardInstanceId === card.instanceId ||
-                    (a.action.payload as any)?.evolveTargetInstanceId === card.instanceId
-                );
-                const isSelected = selectedHandInstanceId === card.instanceId;
-
-                return (
-                  <div
-                    key={card.instanceId}
-                    onPointerDown={(e) => handlePointerDown(e, card, 'HAND')}
-                    style={{ zIndex: isSelected ? 40 : index + 1, marginLeft: index === 0 ? "0px" : `${Math.min(-10, Math.max(-50, -8 * (pA.hand.length - 2)))}px` }}
-                    className={`transition-all duration-150 transform hover:-translate-y-4 hover:z-30 shrink-0 ${
-                      isSelected ? '-translate-y-6 scale-105 z-40' : ''
-                    }`}
-                  >
-                    <CardItem
-                      card={card}
-                      size="xs"
-                      isInteractive={true}
-                      isSelected={isSelected}
-                      isPlayable={isPlayable && isHumanTurn}
-                      onInspect={onInspectCard}
-                    />
-
-                    {/* Quick Action Bubble when Card is Tapped / Selected */}
-                    {isSelected && isHumanTurn && (
-                      <div className="absolute -top-10 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-stone-900 border border-amber-400 rounded-full px-2 py-1 shadow-2xl z-50 animate-fade-in whitespace-nowrap">
-                        {gameState.phase === 'EFFECT_RESOLUTION' ? (
-                          <button
-                            onClick={() => {
-                              const resolveAction = legalActions.find(
-                                (a) =>
-                                  a.action.type === 'RESOLVE_EFFECT' &&
-                                  (a.action.payload as any)?.targetId === card.instanceId
-                              );
-                              if (resolveAction) handleExecuteAction(resolveAction.action);
-                            }}
-                            className="px-1.5 py-0.5 rounded bg-indigo-500 hover:bg-indigo-400 text-stone-900 text-[10px] font-bold"
-                          >
-                            アルカナに置く
-                          </button>
-                        ) : gameState.phase === 'ARCANA' ? (
-                          <button
-                            onClick={() => {
-                              const arcAction = legalActions.find(
-                                (a) =>
-                                  a.action.type === 'SET_ARCANA' &&
-                                  (a.action.payload as any)?.cardInstanceId === card.instanceId
-                              );
-                              if (arcAction) handleExecuteAction(arcAction.action);
-                            }}
-                            className="px-2 py-0.5 rounded-full bg-amber-500 hover:bg-amber-400 text-stone-950 text-[10px] font-black flex items-center gap-1"
-                          >
-                            <Flame className="w-2.5 h-2.5 fill-current" />
-                            <span>アルカナにセット</span>
-                          </button>
-                        ) : selectedHandActions.length > 0 ? (
-                          selectedHandActions.map((act, i) => (
-                            <button
-                              key={i}
-                              onClick={() => handleExecuteAction(act.action)}
-                              className="px-2 py-0.5 rounded-full bg-amber-500 hover:bg-amber-400 text-stone-950 text-[10px] font-black flex items-center gap-1"
-                            >
-                              <span>{act.description}</span>
-                              <ArrowRight className="w-2.5 h-2.5" />
-                            </button>
-                          ))
-                        ) : (
-                          <span className="text-[10px] text-stone-400 px-1">利用可能行動なし</span>
-                        )}
-
-                        <button
-                          onClick={() => onInspectCard(card.baseCard)}
-                          className="px-1.5 py-0.5 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-300 text-[10px] font-bold"
-                          title="カード詳細"
-                        >
-                          詳細
-                        </button>
-                        <button
-                          onClick={() => setSelectedHandInstanceId(null)}
-                          className="p-0.5 text-stone-400 hover:text-white"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })
+              <div className="px-3 py-1.5 rounded-xl bg-stone-900/90 border border-stone-800 text-stone-500 font-mono text-[11px]">
+                {isHumanTurn ? '待機中' : '相手行動中'}
+              </div>
             )}
           </div>
-        </div>
-
-        {/* Right: End Turn Button */}
-        <div className="shrink-0 pl-1">
-          {passAction && gameState.phase === 'ACTION' && isHumanTurn ? (
-            <button
-              id="end-turn-btn"
-              onClick={() => handleExecuteAction(passAction.action)}
-              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black text-xs shadow-lg shadow-amber-600/30 border border-amber-300 active:scale-95 transition-all flex items-center gap-1"
-            >
-              <span>ターン終了</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          ) : (
-            <div className="px-3 py-1.5 rounded-xl bg-stone-900 border border-stone-800 text-[10px] text-stone-500 font-mono">
-              {isHumanTurn ? '待機中' : '相手ターン'}
-            </div>
-          )}
         </div>
       </div>
 
@@ -1171,155 +740,40 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         <div
           style={{
             position: 'fixed',
-            left: dragState.currentX - 35,
-            top: dragState.currentY - 50,
+            left: dragState.currentX - 38,
+            top: dragState.currentY - 53,
             pointerEvents: 'none',
             zIndex: 9999,
           }}
-          className="opacity-90 scale-105 shadow-2xl"
+          className="opacity-90 scale-105 shadow-2xl transition-transform"
         >
           <CardItem card={dragState.card} size="xs" isInteractive={false} />
         </div>
       )}
 
       {/* ============================================================ */}
-      {/* 7. SLIM COMPACT MENU DRAWER / MODAL */}
+      {/* 7. MODALS & OVERLAYS */}
       {/* ============================================================ */}
-      {showMenuDrawer && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in"
-          onClick={() => setShowMenuDrawer(false)}
-        >
-          <div
-            className="bg-stone-900 border border-stone-700 rounded-2xl w-full max-w-md p-4 shadow-2xl relative text-stone-100 space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Drawer Header */}
-            <div className="flex items-center justify-between border-b border-stone-800 pb-2.5">
-              <h3 className="text-sm font-black text-white flex items-center gap-2">
-                <Menu className="w-4 h-4 text-amber-400" />
-                対戦メニュー
-              </h3>
-              <button
-                onClick={() => setShowMenuDrawer(false)}
-                className="p-1 text-stone-400 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      {/* Card Detail Floating Panel with '×' close button */}
+      <CardDetailPanel card={detailCard} onClose={() => setDetailCard(null)} />
 
-            {/* Quick Options */}
-            <div className="space-y-2 text-xs">
-              <button
-                onClick={() => {
-                  setShowMenuDrawer(false);
-                  setShowLogModal(true);
-                }}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-800 text-stone-200"
-              >
-                <div className="flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-sky-400" />
-                  <span>対戦ログ & AI思考ログ</span>
-                </div>
-                <span className="text-[10px] text-stone-500 font-mono">{gameLogs.length}件</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setShowMenuDrawer(false);
-                  setShowSettingsModal(true);
-                }}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-800 text-stone-200"
-              >
-                <div className="flex items-center gap-2">
-                  <Settings className="w-4 h-4 text-amber-400" />
-                  <span>対戦設定 & デッキ変更</span>
-                </div>
-                <span className="text-[10px] text-stone-500">変更</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  startNewMatch();
-                  setShowMenuDrawer(false);
-                }}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-800 text-amber-300"
-              >
-                <div className="flex items-center gap-2">
-                  <RotateCcw className="w-4 h-4" />
-                  <span>試合をリセット (再開)</span>
-                </div>
-              </button>
-            </div>
-
-            {/* Mode Navigation */}
-            {onNavigateTab && (
-              <div className="pt-2 border-t border-stone-800">
-                <div className="text-[11px] font-bold text-stone-400 mb-2">他画面へ移動 (対戦を中断):</div>
-                <div className="grid grid-cols-3 gap-1.5">
-                  <button
-                    onClick={() => {
-                      setShowMenuDrawer(false);
-                      onNavigateTab('DECK_BUILDER');
-                    }}
-                    className="px-2 py-1.5 rounded-lg bg-stone-950 hover:bg-stone-800 border border-stone-800 text-stone-300 hover:text-white flex items-center gap-1 text-[10px] font-bold"
-                  >
-                    <Wrench className="w-3 h-3 text-amber-400" />
-                    <span>デッキ構築</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowMenuDrawer(false);
-                      onNavigateTab('VERIFY');
-                    }}
-                    className="px-2 py-1.5 rounded-lg bg-stone-950 hover:bg-stone-800 border border-stone-800 text-stone-300 hover:text-white flex items-center gap-1 text-[10px] font-bold"
-                  >
-                    <Activity className="w-3 h-3 text-emerald-400" />
-                    <span>AI検証</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowMenuDrawer(false);
-                      onNavigateTab('ANALYTICS');
-                    }}
-                    className="px-2 py-1.5 rounded-lg bg-stone-950 hover:bg-stone-800 border border-stone-800 text-stone-300 hover:text-white flex items-center gap-1 text-[10px] font-bold"
-                  >
-                    <BarChart3 className="w-3 h-3 text-sky-400" />
-                    <span>勝率分析</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowMenuDrawer(false);
-                      onNavigateTab('REPLAY');
-                    }}
-                    className="px-2 py-1.5 rounded-lg bg-stone-950 hover:bg-stone-800 border border-stone-800 text-stone-300 hover:text-white flex items-center gap-1 text-[10px] font-bold"
-                  >
-                    <RotateCcw className="w-3 h-3 text-purple-400" />
-                    <span>リプレイ</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowMenuDrawer(false);
-                      onNavigateTab('DEBUG');
-                    }}
-                    className="px-2 py-1.5 rounded-lg bg-stone-950 hover:bg-stone-800 border border-stone-800 text-stone-300 hover:text-white flex items-center gap-1 text-[10px] font-bold"
-                  >
-                    <Bug className="w-3 h-3 text-rose-400" />
-                    <span>デバッグ</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <button
-              onClick={() => setShowMenuDrawer(false)}
-              className="w-full py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-white font-bold text-xs"
-            >
-              対戦に戻る
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Game Menu Modal */}
+      <GameMenuModal
+        isOpen={showMenuModal}
+        onClose={() => setShowMenuModal(false)}
+        onResetMatch={() => {
+          setShowMenuModal(false);
+          startNewMatch();
+        }}
+        onOpenLogs={() => setShowLogModal(true)}
+        onOpenSettings={() => setShowSettingsModal(true)}
+        onNavigateTab={onNavigateTab}
+        isMuted={isMuted}
+        onToggleMute={() => {
+          const newMuted = audioService.toggleMute();
+          setIsMuted(newMuted);
+        }}
+      />
 
       {/* Archive Overlay */}
       <ArchiveOverlay
@@ -1327,7 +781,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         onClose={() => setArchiveModalTarget(null)}
         title={archiveModalTarget === 'A' ? `${pA.name} の墓地 (アーカイブ)` : `${pB.name} の墓地 (アーカイブ)`}
         cards={archiveModalTarget === 'A' ? pA.archive : pB.archive}
-        onInspectCard={onInspectCard}
+        onInspectCard={(c) => setDetailCard(c)}
       />
 
       {/* Arcana Overlay */}
@@ -1336,10 +790,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         onClose={() => setArcanaModalTarget(null)}
         title={arcanaModalTarget === 'A' ? `${pA.name} のアルカナ` : `${pB.name} のアルカナ`}
         arcanaCards={arcanaModalTarget === 'A' ? pA.arcana : pB.arcana}
-        onInspectCard={onInspectCard}
+        onInspectCard={(c) => setDetailCard(c)}
       />
 
-      {/* Match Log & AI Decision Overlay */}
+      {/* Match Log Overlay */}
       <GameLogOverlay
         isOpen={showLogModal}
         onClose={() => setShowLogModal(false)}
@@ -1354,13 +808,13 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           onClick={() => setShowSettingsModal(false)}
         >
           <div
-            className="bg-stone-900 border border-stone-700 rounded-2xl w-full max-w-lg p-5 shadow-2xl relative text-stone-100 space-y-4"
+            className="bg-stone-900 border border-stone-700 rounded-2xl w-full max-w-md p-5 shadow-2xl relative text-stone-100 space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-stone-800 pb-3">
               <h3 className="text-base font-black text-white flex items-center gap-2">
                 <Settings className="w-5 h-5 text-amber-400" />
-                対戦設定 & デッキ変更
+                対戦設定 & デッキ選択
               </h3>
               <button
                 onClick={() => setShowSettingsModal(false)}

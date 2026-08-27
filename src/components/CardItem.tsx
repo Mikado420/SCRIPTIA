@@ -32,7 +32,7 @@ export const FACTION_THEMES: Record<
 > = {
   RED: {
     bg: 'bg-gradient-to-b from-red-950 via-stone-900 to-stone-950',
-    border: 'border-red-600/80',
+    border: 'border-red-600/90',
     text: 'text-red-300',
     badge: 'bg-red-900/90 text-red-100 border-red-500',
     glow: 'shadow-red-600/40',
@@ -42,7 +42,7 @@ export const FACTION_THEMES: Record<
   },
   BLUE: {
     bg: 'bg-gradient-to-b from-blue-950 via-stone-900 to-stone-950',
-    border: 'border-blue-500/80',
+    border: 'border-blue-500/90',
     text: 'text-blue-300',
     badge: 'bg-blue-900/90 text-blue-100 border-blue-400',
     glow: 'shadow-blue-500/40',
@@ -52,7 +52,7 @@ export const FACTION_THEMES: Record<
   },
   GREEN: {
     bg: 'bg-gradient-to-b from-emerald-950 via-stone-900 to-stone-950',
-    border: 'border-emerald-500/80',
+    border: 'border-emerald-500/90',
     text: 'text-emerald-300',
     badge: 'bg-emerald-900/90 text-emerald-100 border-emerald-400',
     glow: 'shadow-emerald-500/40',
@@ -62,7 +62,7 @@ export const FACTION_THEMES: Record<
   },
   HOLY: {
     bg: 'bg-gradient-to-b from-amber-950 via-stone-900 to-stone-950',
-    border: 'border-amber-400/90',
+    border: 'border-amber-400/95',
     text: 'text-amber-200',
     badge: 'bg-amber-800/90 text-amber-100 border-amber-300',
     glow: 'shadow-amber-400/40',
@@ -72,7 +72,7 @@ export const FACTION_THEMES: Record<
   },
   DARK: {
     bg: 'bg-gradient-to-b from-purple-950 via-stone-900 to-stone-950',
-    border: 'border-purple-600/80',
+    border: 'border-purple-600/90',
     text: 'text-purple-300',
     badge: 'bg-purple-950 text-purple-200 border-purple-500',
     glow: 'shadow-purple-600/40',
@@ -82,7 +82,7 @@ export const FACTION_THEMES: Record<
   },
   NEUTRAL: {
     bg: 'bg-gradient-to-b from-stone-850 via-stone-900 to-stone-950',
-    border: 'border-stone-500/80',
+    border: 'border-stone-500/90',
     text: 'text-stone-300',
     badge: 'bg-stone-700 text-stone-100 border-stone-400',
     glow: 'shadow-stone-500/30',
@@ -118,10 +118,10 @@ export const CardItem: React.FC<CardItemProps> = ({
 
   const isUnit = baseCard.cardType === 'UNIT' || baseCard.cardType === 'EVOLVE_UNIT';
 
-  // Sizing definitions tuned for landscape smartphone / tablet / desktop
+  // Responsive card dimensions optimized for duel field and hand
   const sizeConfig = {
     xs: {
-      container: 'w-[74px] h-[104px] p-1 text-[9px] rounded-lg',
+      container: 'w-[76px] h-[106px] p-1 text-[9px] rounded-lg',
       cost: 'w-4 h-4 text-[9px]',
       name: 'text-[9px] leading-none',
       stats: 'text-[8px]',
@@ -129,7 +129,7 @@ export const CardItem: React.FC<CardItemProps> = ({
       badge: 'text-[7px] px-0.5 py-0',
     },
     sm: {
-      container: 'w-[88px] h-[124px] p-1.5 text-[10px] rounded-xl',
+      container: 'w-[90px] h-[126px] p-1.5 text-[10px] rounded-xl',
       cost: 'w-5 h-5 text-[10px]',
       name: 'text-[10px] leading-tight',
       stats: 'text-[9px]',
@@ -137,7 +137,7 @@ export const CardItem: React.FC<CardItemProps> = ({
       badge: 'text-[8px] px-1 py-0.5',
     },
     md: {
-      container: 'w-[108px] h-[152px] p-2 text-xs rounded-xl',
+      container: 'w-[110px] h-[154px] p-2 text-xs rounded-xl',
       cost: 'w-6 h-6 text-xs',
       name: 'text-xs leading-tight',
       stats: 'text-xs',
@@ -154,35 +154,8 @@ export const CardItem: React.FC<CardItemProps> = ({
     },
   }[size];
 
-  const [isLongPressing, setIsLongPressing] = React.useState(false);
-  const timerRef = React.useRef<NodeJS.Timeout | null>(null);
-  const isLongPressTriggeredRef = React.useRef(false);
-
-  const startLongPress = () => {
-    isLongPressTriggeredRef.current = false;
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      isLongPressTriggeredRef.current = true;
-      setIsLongPressing(true);
-      if (onInspect) {
-        onInspect(baseCard);
-      }
-      setTimeout(() => setIsLongPressing(false), 200);
-    }, 450); // 450ms threshold
-  };
-
-  const clearLongPress = () => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  };
-
   const handleClick = (e: React.MouseEvent) => {
-    if (isLongPressTriggeredRef.current) {
-      isLongPressTriggeredRef.current = false;
-      return;
-    }
+    e.stopPropagation();
     if (isInteractive && onClick) {
       onClick();
     }
@@ -200,46 +173,41 @@ export const CardItem: React.FC<CardItemProps> = ({
       id={`card-${baseCard.cardId}-${cardInst?.instanceId || 'base'}`}
       onClick={handleClick}
       onPointerDown={onPointerDown}
-      onTouchStart={!onPointerDown ? startLongPress : undefined}
-      onTouchEnd={!onPointerDown ? clearLongPress : undefined}
-      onTouchMove={!onPointerDown ? clearLongPress : undefined}
-      onTouchCancel={!onPointerDown ? clearLongPress : undefined}
-      onMouseDown={!onPointerDown ? startLongPress : undefined}
-      onMouseUp={!onPointerDown ? clearLongPress : undefined}
-      onMouseLeave={!onPointerDown ? clearLongPress : undefined}
-      className={`relative select-none border flex flex-col justify-between transition-all duration-150 cursor-pointer shadow-md shrink-0 ${
+      className={`relative select-none border-2 flex flex-col justify-between transition-all duration-150 cursor-pointer shadow-md shrink-0 ${
         sizeConfig.container
       } ${factionTheme.bg} ${factionTheme.border} ${
-        isRested ? 'rotate-90 opacity-70 scale-90 origin-center' : ''
+        isRested
+          ? 'rotate-[-12deg] opacity-75 grayscale-[25%] shadow-inner origin-center scale-95'
+          : ''
       } ${
         isSelected
-          ? 'ring-2 ring-amber-400 scale-105 -translate-y-1.5 z-20 shadow-xl shadow-amber-500/40 animate-card-glow'
+          ? 'ring-2 ring-amber-400 scale-105 -translate-y-2 z-20 shadow-2xl shadow-amber-500/50 animate-card-glow border-amber-300'
           : ''
       } ${
         isPlayable
-          ? 'ring-2 ring-emerald-400 shadow-lg shadow-emerald-500/40 hover:scale-105 z-10'
+          ? 'ring-2 ring-emerald-400 shadow-lg shadow-emerald-500/40 hover:scale-105 z-10 border-emerald-400'
           : ''
       } ${
         isTargetable
-          ? 'ring-2 ring-red-500 shadow-lg shadow-red-500/50 hover:scale-105 z-10 animate-target-glow'
+          ? 'ring-2 ring-red-500 shadow-lg shadow-red-500/50 hover:scale-105 z-10 animate-target-glow border-red-500'
           : ''
       } ${
         isGuardable
-          ? 'ring-2 ring-sky-400 shadow-lg shadow-sky-500/40 hover:scale-105 z-10'
+          ? 'ring-2 ring-sky-400 shadow-lg shadow-sky-500/40 hover:scale-105 z-10 border-sky-400'
           : ''
-      } ${isLongPressing ? 'scale-110 shadow-2xl ring-2 ring-amber-300 z-30' : ''} hover:border-white/70 active:scale-95`}
+      } hover:border-white/80 active:scale-95`}
     >
-      {/* Top Bar: Cost + Type / Faction */}
+      {/* Top Header: Cost + Faction + Type */}
       <div>
         <div className="flex items-center justify-between gap-1 mb-0.5">
-          {/* Cost Circle */}
+          {/* Cost Badge */}
           <div
-            className={`flex items-center justify-center font-black rounded-full border shadow-inner ${sizeConfig.cost} ${factionTheme.badge}`}
+            className={`flex items-center justify-center font-black rounded-full border shadow-inner font-mono ${sizeConfig.cost} ${factionTheme.badge}`}
           >
             {baseCard.cost}
           </div>
 
-          {/* Faction & Type Chip */}
+          {/* Faction & Type Badges */}
           <div className="flex items-center gap-0.5">
             <span
               className={`font-black rounded ${sizeConfig.badge} ${factionTheme.badge}`}
@@ -269,8 +237,8 @@ export const CardItem: React.FC<CardItemProps> = ({
         </div>
       </div>
 
-      {/* Center Effect Box */}
-      <div className="my-0.5 bg-stone-950/80 rounded p-1 border border-stone-800/90 flex-1 flex flex-col justify-center overflow-hidden">
+      {/* Middle: Effect Summary Box */}
+      <div className="my-0.5 bg-stone-950/85 rounded p-1 border border-stone-800 flex-1 flex flex-col justify-center overflow-hidden">
         <p
           className={`text-stone-300 leading-tight ${
             size === 'xs'
@@ -282,57 +250,59 @@ export const CardItem: React.FC<CardItemProps> = ({
               : 'text-xs line-clamp-4'
           }`}
         >
-          {baseCard.effectsText}
+          {baseCard.effectsText || '効果なし'}
         </p>
       </div>
 
-      {/* Bottom Stats Footer (For Units & Evolve Units) */}
+      {/* Bottom Footer: Stats (ATK / DEF / BRK) for Units */}
       {isUnit ? (
         <div
-          className={`flex items-center justify-between font-mono font-black pt-0.5 border-t border-stone-800 ${sizeConfig.stats}`}
+          className={`flex items-center justify-between font-mono font-black pt-0.5 border-t border-stone-800/90 ${sizeConfig.stats}`}
         >
-          <div className="flex items-center gap-0.5 text-amber-300" title="攻撃力 (ATK)">
+          <div className="flex items-center gap-0.5 text-red-400" title="攻撃力 (ATK)">
             <Swords className={sizeConfig.statsIcon} />
             <span>{currentAtk}</span>
           </div>
 
-          <div className="flex items-center gap-0.5 text-sky-300" title="防御力 (DEF)">
+          <div className="flex items-center gap-0.5 text-sky-400" title="防御力 (DEF)">
             <Shield className={sizeConfig.statsIcon} />
             <span>{currentDef}</span>
           </div>
 
-          <div className="flex items-center gap-0.5 text-rose-400" title="結界ブレイク力 (BRK)">
+          <div className="flex items-center gap-0.5 text-amber-400" title="結界ブレイク力 (BRK)">
             <Heart className={sizeConfig.statsIcon} />
             <span>{currentBrk}</span>
           </div>
         </div>
       ) : (
         <div className="text-[8px] text-stone-400 text-center font-mono truncate pt-0.5 border-t border-stone-800">
-          {baseCard.cardType === 'SPELL' ? '即時効果' : baseCard.cardType === 'RUNE' ? '誘発ルーン' : '永続ドメイン'}
+          {baseCard.cardType === 'SPELL' ? '即時発動' : baseCard.cardType === 'RUNE' ? '誘発ルーン' : '永続領域'}
         </div>
       )}
 
-      {/* Inspect Button Icon (Top Right or Corner) */}
-      {onInspect && (
-        <button
-          type="button"
-          onClick={handleInspectClick}
-          className="absolute -top-1 -right-1 w-4 h-4 bg-stone-800/90 hover:bg-amber-500 hover:text-stone-950 text-stone-300 rounded-full border border-stone-600 flex items-center justify-center transition-colors shadow"
-          title="カード詳細を確認"
-        >
-          <Info className="w-2.5 h-2.5" />
-        </button>
+      {/* Rest Overlay Stamp */}
+      {isRested && (
+        <div className="absolute inset-0 bg-stone-950/60 rounded-lg flex items-center justify-center pointer-events-none">
+          <span className="px-1.5 py-0.5 bg-stone-900/90 border border-stone-600 rounded text-[9px] font-black text-stone-400 tracking-wider">
+            REST
+          </span>
+        </div>
       )}
 
-      {/* Special Badges: Cant Attack, Guard */}
+      {/* Trait Badges */}
       {baseCard.cantAttack && (
-        <div className="absolute top-5 right-0.5 bg-rose-700/90 text-rose-100 text-[8px] font-black px-1 rounded shadow">
+        <div className="absolute top-4.5 right-0.5 bg-rose-700/90 text-rose-100 text-[8px] font-black px-1 rounded shadow">
           攻禁
         </div>
       )}
       {baseCard.hasGuard && (
-        <div className="absolute bottom-4 right-0.5 bg-sky-600 text-sky-100 text-[8px] font-black px-1 rounded shadow">
+        <div className="absolute bottom-4.5 right-0.5 bg-sky-600 text-sky-100 text-[8px] font-black px-1 rounded shadow">
           防
+        </div>
+      )}
+      {cardInst && cardInst.hasSummoningSickness && !baseCard.hasHaste && (
+        <div className="absolute top-4.5 left-0.5 bg-stone-800/90 text-stone-300 text-[8px] font-black px-1 rounded border border-stone-600 shadow">
+          ⏳
         </div>
       )}
     </div>
