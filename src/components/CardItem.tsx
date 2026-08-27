@@ -118,26 +118,26 @@ export const CardItem: React.FC<CardItemProps> = ({
 
   const isUnit = baseCard.cardType === 'UNIT' || baseCard.cardType === 'EVOLVE_UNIT';
 
-  // Responsive card dimensions optimized for duel field and hand in landscape
+  // Responsive card dimensions with guaranteed 5:7 TCG aspect ratio
   const sizeConfig = {
     xs: {
-      container: 'w-[52px] sm:w-[58px] md:w-[64px] h-[72px] sm:h-[80px] md:h-[88px] p-0.5 sm:p-1 text-[8px] rounded-lg',
-      cost: 'w-3.5 h-3.5 sm:w-4 sm:h-4 text-[8px] sm:text-[9px] font-black',
-      name: 'text-[8px] sm:text-[9px] leading-none font-black',
-      stats: 'text-[9px] sm:text-[10px] font-black',
+      container: 'w-[48px] xs:w-[54px] sm:w-[60px] md:w-[68px] aspect-[5/7] p-0.5 sm:p-1 text-[8px] rounded-md sm:rounded-lg',
+      cost: 'w-3 h-3 xs:w-3.5 xs:h-3.5 sm:w-4 sm:h-4 text-[7px] xs:text-[8px] sm:text-[9px] font-black',
+      name: 'text-[7px] xs:text-[8px] sm:text-[9px] leading-tight font-black',
+      stats: 'text-[7px] xs:text-[8px] sm:text-[9px] md:text-[10px] font-black',
       statsIcon: 'w-2 h-2 sm:w-2.5 sm:h-2.5',
-      badge: 'text-[6px] sm:text-[7px] px-0.5 py-0',
+      badge: 'text-[5px] xs:text-[6px] sm:text-[7px] px-0.5 py-0',
     },
     sm: {
-      container: 'w-[56px] sm:w-[62px] md:w-[68px] h-[76px] sm:h-[84px] md:h-[92px] p-0.5 sm:p-1 text-[8px] sm:text-[9px] rounded-lg',
-      cost: 'w-3.5 h-3.5 sm:w-4 sm:h-4 text-[9px] font-black',
-      name: 'text-[8px] sm:text-[9px] leading-none font-black',
-      stats: 'text-[9px] sm:text-[10px] md:text-[11px] font-black',
+      container: 'w-[52px] xs:w-[60px] sm:w-[68px] md:w-[76px] lg:w-[84px] aspect-[5/7] p-0.5 xs:p-1 text-[8px] sm:text-[9px] rounded-md sm:rounded-lg',
+      cost: 'w-3.5 h-3.5 sm:w-4 sm:h-4 text-[8px] sm:text-[9px] font-black',
+      name: 'text-[7px] xs:text-[8px] sm:text-[9px] leading-tight font-black',
+      stats: 'text-[8px] xs:text-[9px] sm:text-[10px] md:text-[11px] font-black',
       statsIcon: 'w-2 h-2 sm:w-2.5 sm:h-2.5',
-      badge: 'text-[6px] sm:text-[7px] px-0.5 py-0',
+      badge: 'text-[5px] xs:text-[6px] sm:text-[7px] px-0.5 py-0',
     },
     md: {
-      container: 'w-[84px] sm:w-[94px] h-[116px] sm:h-[130px] p-1.5 text-[10px] rounded-xl',
+      container: 'w-[84px] sm:w-[94px] lg:w-[104px] aspect-[5/7] p-1.5 text-[10px] rounded-xl',
       cost: 'w-5 h-5 text-xs font-black',
       name: 'text-[10px] sm:text-xs leading-tight font-black',
       stats: 'text-xs font-black',
@@ -145,7 +145,7 @@ export const CardItem: React.FC<CardItemProps> = ({
       badge: 'text-[8px] px-1 py-0.5',
     },
     lg: {
-      container: 'w-[120px] sm:w-[130px] h-[166px] sm:h-[180px] p-2 text-xs rounded-2xl',
+      container: 'w-[120px] sm:w-[130px] lg:w-[144px] aspect-[5/7] p-2 text-xs rounded-2xl',
       cost: 'w-6 h-6 text-sm font-black',
       name: 'text-xs sm:text-sm leading-snug font-black',
       stats: 'text-sm font-black',

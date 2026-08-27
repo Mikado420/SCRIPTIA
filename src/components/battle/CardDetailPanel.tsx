@@ -59,15 +59,16 @@ export const CardDetailPanel: React.FC<CardDetailPanelProps> = ({ card, onClose 
 
           <button
             onClick={onClose}
-            className="p-1 rounded-full bg-stone-800/90 hover:bg-stone-700 text-stone-300 hover:text-white border border-stone-600 transition-colors"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full bg-stone-800/90 hover:bg-stone-700 active:bg-stone-600 text-stone-300 hover:text-white border border-stone-600 transition-colors shadow-xs"
             title="閉じる"
+            aria-label="閉じる"
           >
-            <X className="w-3.5 h-3.5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Content Body */}
-        <div className="p-2.5 sm:p-3 space-y-2 overflow-y-auto max-h-[calc(92dvh-80px)]">
+        <div className="p-2 sm:p-3 space-y-1.5 sm:space-y-2 overflow-y-auto max-h-[calc(88dvh-75px)]">
           {/* Card Sub-header info */}
           <div className="flex items-center justify-between bg-stone-950/80 px-2 py-1 rounded-lg border border-stone-800 text-[10px] sm:text-[11px]">
             <span className="text-stone-400 font-medium">分類: <strong className="text-stone-200">{getTypeText()}</strong></span>
