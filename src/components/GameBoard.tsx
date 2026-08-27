@@ -1004,7 +1004,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
         {/* Center: Fan / Overlapping Hand Cards */}
         <div className="flex-1 flex items-end justify-center px-2 pb-0.5 relative">
-          <div className="flex items-end justify-center -space-x-5 sm:-space-x-7 transition-all max-w-full">
+          <div className="flex items-end justify-center transition-all max-w-full">
             {pA.hand.length === 0 ? (
               <div className="text-[10px] text-stone-600 italic py-4 font-mono">手札なし</div>
             ) : (
@@ -1020,7 +1020,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                   <div
                     key={card.instanceId}
                     onPointerDown={(e) => handlePointerDown(e, card, 'HAND')}
-                    style={{ zIndex: isSelected ? 40 : index + 1 }}
+                    style={{ zIndex: isSelected ? 40 : index + 1, marginLeft: index === 0 ? "0px" : `${Math.min(-10, Math.max(-50, -8 * (pA.hand.length - 2)))}px` }}
                     className={`transition-all duration-150 transform hover:-translate-y-4 hover:z-30 shrink-0 ${
                       isSelected ? '-translate-y-6 scale-105 z-40' : ''
                     }`}

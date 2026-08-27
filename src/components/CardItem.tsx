@@ -303,7 +303,6 @@ export const CardItem: React.FC<CardItemProps> = ({
 
           <div className="flex items-center gap-0.5 text-rose-400" title="結界ブレイク力 (BRK)">
             <Heart className={sizeConfig.statsIcon} />
-            <span className="text-[9px] text-rose-300 font-sans">BRK</span>
             <span>{currentBrk}</span>
           </div>
         </div>

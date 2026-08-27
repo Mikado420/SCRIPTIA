@@ -209,6 +209,19 @@ export class GameEngine {
     return entry;
   }
 
+
+  private resetCardState(card: CardInstance): CardInstance {
+    if (!card) return card;
+    card.isRested = false;
+    card.hasSummoningSickness = false;
+    card.summonedTurn = 0;
+    card.buffs = [];
+    card.evolvedFrom = undefined;
+    card.cannotBeGuardedThisTurn = false;
+    card.canAttackActiveThisTurn = false;
+    return card;
+  }
+
   public getLogs(): GameLogEntry[] {
     return [...this.logs];
   }
@@ -224,6 +237,9 @@ export class GameEngine {
     let brk = unit.baseCard.brk;
     let hasGuard = !!unit.baseCard.hasGuard;
     let canAttack = !unit.baseCard.cantAttack;
+    if (unit.hasSummoningSickness && !unit.baseCard.hasHaste) {
+      canAttack = false;
+    }
 
     // Apply Temporary/Permanent Buffs on instance
     for (const buff of unit.buffs) {
@@ -875,19 +891,18 @@ export class GameEngine {
         const handIdx = active.hand.findIndex((c) => c.instanceId === cardInstanceId);
         if (handIdx !== -1) {
           const card = active.hand.splice(handIdx, 1)[0];
-          active.arcana.push({ instance: card, isRested: false });
+          active.arcana.push({ instance: this.resetCardState(card), isRested: false });
           active.hasPlacedArcanaThisTurn = true;
           logMessage = `${active.name} は「${card.baseCard.name}」をアルカナに置いた。(アルカナ: ${active.arcana.length}枚)`;
           logType = 'ARCANA';
           diffDescriptions.push(`${active.name}の手札が1枚減り、アルカナが1枚増加`);
 
           // Check opponent Rune: C-14 (調和の継承: 相手がアルカナにカードを置いたとき)
-          const runeC14 = opponent.runes.find((r) => r.cardId === 'C-14');
-          if (runeC14) {
+          const hasC14 = opponent.runes.some((r) => r.cardId === 'C-14');
+          if (hasC14) {
             nextState.phase = 'RUNE_STEP';
             nextState.pendingTrigger = {
               triggerType: 'ON_ARCANA_SET',
-              sourceInstanceId: runeC14.instanceId,
               triggeringPlayerId: opponent.playerId,
             };
           } else {
@@ -925,13 +940,12 @@ export class GameEngine {
 
           // Check opponent Rune: A-14 (フレア・トリガー)
           // "相手がユニットを登場させたとき、そのユニットがDEF60以下のガードなら、登場時効果を処理する前に破壊する。"
-          const flareRune = opponent.runes.find((r) => r.cardId === 'A-14');
+          const hasFlare = opponent.runes.some((r) => r.cardId === 'A-14');
           const isGuardUnit = !!card.baseCard.hasGuard;
-          if (flareRune && card.baseCard.def <= 60 && isGuardUnit) {
+          if (hasFlare && card.baseCard.def <= 60 && isGuardUnit) {
             nextState.phase = 'RUNE_STEP';
             nextState.pendingTrigger = {
               triggerType: 'ON_ENTER',
-              sourceInstanceId: flareRune.instanceId,
               triggeringPlayerId: opponent.playerId,
               targetInstanceId: card.instanceId,
               targetDef: card.baseCard.def,
@@ -963,7 +977,7 @@ export class GameEngine {
           // Rule 14: Base unit is sent to archive!
           // Evolution unit does NOT inherit ATK, DEF, BRK, effects, active/rest state, or summoning sickness.
           // Evolution unit enters ACTIVE and CAN ATTACK on evolution turn.
-          active.archive.push(baseUnit);
+          active.archive.push(this.resetCardState(baseUnit));
 
           evolveCard.isRested = false;
           evolveCard.summonedTurn = nextState.turnNumber;
@@ -994,8 +1008,8 @@ export class GameEngine {
             // 精霊神セレフィア: 登場時、デッキの上から2枚をアルカナに置く
             const ramp1 = active.deck.shift();
             const ramp2 = active.deck.shift();
-            if (ramp1) active.arcana.push({ instance: ramp1, isRested: true });
-            if (ramp2) active.arcana.push({ instance: ramp2, isRested: true });
+            if (ramp1) active.arcana.push({ instance: this.resetCardState(ramp1), isRested: true });
+            if (ramp2) active.arcana.push({ instance: this.resetCardState(ramp2), isRested: true });
             logMessage += ` (アルカナを2枚追加)`;
           } else if (evolveCard.cardId === 'D-11') {
             // 聖天護神アルディアス: 登場時、相手のユニット1体をレストする
@@ -1035,7 +1049,7 @@ export class GameEngine {
         if (handIdx !== -1) {
           const spell = active.hand.splice(handIdx, 1)[0];
           this.payCost(active, spell.baseCard.cost);
-          active.archive.push(spell);
+          active.archive.push(this.resetCardState(spell));
 
           logMessage = `${active.name} はスペル「${spell.baseCard.name}」を使用！`;
           logType = 'EFFECT';
@@ -1076,7 +1090,7 @@ export class GameEngine {
           } else if (spell.cardId === 'C-12') {
             // 木漏れ日の恩恵: デッキの上から1枚をアルカナに置く
             const top = active.deck.shift();
-            if (top) active.arcana.push({ instance: top, isRested: true });
+            if (top) active.arcana.push({ instance: this.resetCardState(top), isRested: true });
             logMessage += ` (デッキからアルカナ+1)`;
           } else if (spell.cardId === 'C-13') {
             // ツイン・グロウ: このターン、自分のユニット2体のATK+30
@@ -1122,7 +1136,7 @@ export class GameEngine {
             if (opponent.hand.length > 0) {
               const randIdx = Math.floor(this.prng.next() * opponent.hand.length);
               const discarded = opponent.hand.splice(randIdx, 1)[0];
-              opponent.archive.push(discarded);
+              opponent.archive.push(this.resetCardState(discarded));
               logMessage += ` (相手の手札「${discarded.baseCard.name}」をアーカイブへ置いた)`;
             }
           } else if (spell.cardId === 'E-13' && targetUnitInstanceId) {
@@ -1132,13 +1146,13 @@ export class GameEngine {
             // ルーン・ブレイク: 相手のルーン1枚を破壊する
             if (opponent.runes.length > 0) {
               const destroyedRune = opponent.runes.pop()!;
-              opponent.archive.push(destroyedRune);
+              opponent.archive.push(this.resetCardState(destroyedRune));
               logMessage += ` (相手のルーン「${destroyedRune.baseCard.name}」を破壊)`;
             }
           } else if (spell.cardId === 'N-05') {
             // ドメイン・ブレイク: 相手のドメイン1枚をアーカイブに置く
             if (opponent.domain) {
-              opponent.archive.push(opponent.domain);
+              opponent.archive.push(this.resetCardState(opponent.domain!));
               logMessage += ` (相手のドメイン「${opponent.domain.baseCard.name}」をアーカイブへ置いた)`;
               opponent.domain = null;
             }
@@ -1206,7 +1220,7 @@ export class GameEngine {
           if (attacker.cardId === 'C-01') {
             if (active.arcana.length > 0) {
               const returned = active.arcana.pop()!;
-              active.hand.push(returned.instance);
+              active.hand.push(this.resetCardState(returned.instance));
               logMessage += ` (ミアの効果でアルカナ「${returned.instance.baseCard.name}」を手札に戻した)`;
             }
           }
@@ -1216,12 +1230,12 @@ export class GameEngine {
             logType = 'ATTACK';
 
             // Check opponent Runes: B-14 (ヴォルテ・リターン) or D-14 (三重聖壁: 自分が攻撃されたとき)
-            const attackRune = opponent.runes.find((r) => r.cardId === 'B-14' || r.cardId === 'D-14');
-            if (attackRune) {
+            const hasB14 = opponent.runes.some((r) => r.cardId === 'B-14');
+            const hasD14 = opponent.runes.some((r) => r.cardId === 'D-14');
+            if (hasB14 || hasD14) {
               nextState.phase = 'RUNE_STEP';
               nextState.pendingTrigger = {
                 triggerType: 'ON_ATTACK',
-                sourceInstanceId: attackRune.instanceId,
                 triggeringPlayerId: opponent.playerId,
                 targetInstanceId: attacker.instanceId,
               };
@@ -1251,6 +1265,22 @@ export class GameEngine {
               }
             }
           } else if (targetType === 'UNIT' && targetUnitInstanceId) {
+            const hasB14 = opponent.runes.some((r) => r.cardId === 'B-14');
+            if (hasB14) {
+              nextState.phase = 'RUNE_STEP';
+              nextState.pendingTrigger = {
+                triggerType: 'ON_ATTACK',
+                triggeringPlayerId: opponent.playerId,
+                targetInstanceId: attacker.instanceId,
+              };
+              nextState.pendingCombat = {
+                attackerInstanceId: attacker.instanceId,
+                attackerPlayerId: active.playerId,
+                targetType: 'UNIT',
+                targetUnitInstanceId: targetUnitInstanceId,
+              };
+              break;
+            }
             const defender = opponent.battlefield.find((u) => u.instanceId === targetUnitInstanceId);
             if (defender) {
               logMessage = `${active.name} の「${attacker.baseCard.name}」が「${defender.baseCard.name}」に攻撃！`;
@@ -1311,7 +1341,7 @@ export class GameEngine {
           const runeIdx = runePlayer.runes.findIndex((r) => r.instanceId === runeInstanceId);
           if (runeIdx !== -1) {
             const rune = runePlayer.runes.splice(runeIdx, 1)[0];
-            runePlayer.archive.push(rune);
+            runePlayer.archive.push(this.resetCardState(rune));
             logMessage = `${runePlayer.name} のルーン「${rune.baseCard.name}」が発動！`;
             logType = 'RUNE';
 
@@ -1326,7 +1356,7 @@ export class GameEngine {
               const uIdx = targetPlayer.battlefield.findIndex((u) => u.instanceId === trigger.targetInstanceId);
               if (uIdx !== -1) {
                 const returned = targetPlayer.battlefield.splice(uIdx, 1)[0];
-                targetPlayer.hand.push(returned);
+                targetPlayer.hand.push(this.resetCardState(returned));
                 this.drawCards(runePlayer, 1);
                 logMessage += ` (攻撃ユニットを手札に戻し1枚引いた)`;
               }
@@ -1351,12 +1381,12 @@ export class GameEngine {
               // C-14: 調和の継承 (相手がアルカナにカードを置いたとき、アーカイブから1枚をアルカナに置き、アルカナのカード1枚を手札に戻す)
               if (runePlayer.archive.length > 0) {
                 const archCard = runePlayer.archive.pop()!;
-                runePlayer.arcana.push({ instance: archCard, isRested: true });
+                runePlayer.arcana.push({ instance: this.resetCardState(archCard), isRested: true });
                 logMessage += ` (アーカイブから「${archCard.baseCard.name}」をアルカナに置いた)`;
               }
               if (runePlayer.arcana.length > 0) {
                 const arcCard = runePlayer.arcana.shift()!;
-                runePlayer.hand.push(arcCard.instance);
+                runePlayer.hand.push(this.resetCardState(arcCard.instance));
                 logMessage += ` (アルカナの「${arcCard.instance.baseCard.name}」を手札に戻した)`;
               }
             }
@@ -1417,7 +1447,7 @@ export class GameEngine {
             const handIdx = player.hand.findIndex(c => c.instanceId === targetId);
             if (handIdx !== -1) {
               const toArcana = player.hand.splice(handIdx, 1)[0];
-              player.arcana.push({ instance: toArcana, isRested: true });
+              player.arcana.push({ instance: this.resetCardState(toArcana), isRested: true });
               logMessage = `${player.name} は手札から「${toArcana.baseCard.name}」をアルカナに置いた`;
             }
           } else {
@@ -1527,7 +1557,7 @@ export class GameEngine {
     for (let i = 0; i < count; i++) {
       if (player.deck.length > 0) {
         const card = player.deck.shift()!;
-        player.hand.push(card);
+        player.hand.push(this.resetCardState(card));
         player.cardsDrawnCount++;
         drawn++;
       }
@@ -1552,14 +1582,14 @@ export class GameEngine {
         const idx = opp.battlefield.findIndex((u) => u.instanceId === target.instanceId);
         if (idx !== -1) {
           const returned = opp.battlefield.splice(idx, 1)[0];
-          opp.hand.push(returned);
+          opp.hand.push(this.resetCardState(returned));
         }
       }
     } else if (card.cardId === 'B-09') {
       // 静水の魔導師ルーク: 登場時、相手のユニット1体を手札に戻してもよい
       if (opp.battlefield.length > 0) {
         const returned = opp.battlefield.pop()!;
-        opp.hand.push(returned);
+        opp.hand.push(this.resetCardState(returned));
       }
     } else if (card.cardId === 'C-03') {
       // 宝花妖精ノエラ: 登場時、手札1枚をアルカナに置いてもよい
@@ -1574,7 +1604,7 @@ export class GameEngine {
     } else if (card.cardId === 'C-04') {
       // 若葉妖精リーファ: 登場時、デッキの上から1枚をアルカナに置く
       const top = owner.deck.shift();
-      if (top) owner.arcana.push({ instance: top, isRested: true });
+      if (top) owner.arcana.push({ instance: this.resetCardState(top), isRested: true });
     } else if (card.cardId === 'C-08' && owner.arcana.length >= 7) {
       // セレナ・ファンガス: 登場時、自分のアルカナが7枚以上なら1枚引く
       this.drawCards(owner, 1);
@@ -1587,7 +1617,7 @@ export class GameEngine {
       if (opp.hand.length > 0) {
         const randIdx = Math.floor(this.prng.next() * opp.hand.length);
         const discarded = opp.hand.splice(randIdx, 1)[0];
-        opp.archive.push(discarded);
+        opp.archive.push(this.resetCardState(discarded));
       }
     } else if (card.cardId === 'E-04') {
       // 深淵の悪魔アビロト: 登場時、相手のCOST2以下のユニット1体を破壊する
@@ -1713,26 +1743,26 @@ export class GameEngine {
     // Replacement Effects (Rule 32):
     // B-11 (大魔導師アストラ): 破壊されるとき、かわりに手札に戻す
     if (unit.cardId === 'B-11') {
-      owner.hand.push(unit);
+      owner.hand.push(this.resetCardState(unit));
       this.addLog(state, 'EFFECT', `大魔導師アストラの効果で手札へ戻った！`, owner.playerId);
       return;
     }
 
     // C-06 (エレナ・アイビー): このユニットが破壊されるとき、かわりにアルカナに置く
     if (unit.cardId === 'C-06') {
-      owner.arcana.push({ instance: unit, isRested: true });
+      owner.arcana.push({ instance: this.resetCardState(unit), isRested: true });
       this.addLog(state, 'EFFECT', `エレナ・アイビーの効果でアルカナへ置かれた！`, owner.playerId);
       return;
     }
 
     // Standard destruction to Archive
-    owner.archive.push(unit);
+    owner.archive.push(this.resetCardState(unit));
 
     // On-Destroy Triggers:
     // E-01 (墓守の亡者ネグロ): このユニットが破壊されたとき、デッキの上から1枚をアーカイブに置く
     if (unit.cardId === 'E-01' && owner.deck.length > 0) {
       const top = owner.deck.shift()!;
-      owner.archive.push(top);
+      owner.archive.push(this.resetCardState(top));
       this.addLog(state, 'EFFECT', `ネグロの効果でデッキトップ1枚をアーカイブへ`, owner.playerId);
     }
     // E-05 (還魂の亡者バウル): このユニットが破壊されたとき、アーカイブからCOST2以下のユニット1体を手札に戻す
@@ -1742,7 +1772,7 @@ export class GameEngine {
       );
       if (targetIdx !== -1) {
         const retrieved = owner.archive.splice(targetIdx, 1)[0];
-        owner.hand.push(retrieved);
+        owner.hand.push(this.resetCardState(retrieved));
         this.addLog(state, 'EFFECT', `バウルの効果でアーカイブから「${retrieved.baseCard.name}」を手札に戻した`, owner.playerId);
       }
     }
@@ -1753,7 +1783,7 @@ export class GameEngine {
       );
       if (targetIdx !== -1) {
         const retrieved = owner.archive.splice(targetIdx, 1)[0];
-        owner.hand.push(retrieved);
+        owner.hand.push(this.resetCardState(retrieved));
         this.addLog(state, 'EFFECT', `グレイブ・ゴーストの効果でアーカイブから「${retrieved.baseCard.name}」を手札に戻した`, owner.playerId);
       }
     }
@@ -1775,7 +1805,6 @@ export class GameEngine {
         state.phase = 'RUNE_STEP';
         state.pendingTrigger = {
           triggerType: 'ON_DESTROY',
-          sourceInstanceId: necroRune.instanceId,
           triggeringPlayerId: owner.playerId,
         };
       }

@@ -178,7 +178,7 @@ export interface CombatContext {
 
 export interface TriggerContext {
   triggerType: 'ON_ENTER' | 'ON_ATTACK' | 'ON_DESTROY' | 'ON_RUNE_USED' | 'ON_ARCANA_SET';
-  sourceInstanceId: string;
+  sourceInstanceId?: string;
   triggeringPlayerId: PlayerId;
   targetInstanceId?: string;
   targetDef?: number;

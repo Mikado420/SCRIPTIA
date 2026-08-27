@@ -1,19 +1,23 @@
 import React from 'react';
 import { CardData } from '../types/game';
 
+import { X } from 'lucide-react';
+
 interface CardInfoPanelProps {
   card: CardData | null;
+  onClose: () => void;
 }
 
-export const CardInfoPanel: React.FC<CardInfoPanelProps> = ({ card }) => {
+export const CardInfoPanel: React.FC<CardInfoPanelProps> = ({ card, onClose }) => {
   if (!card) return null;
 
   return (
-    <div className="absolute top-4 left-4 w-64 bg-stone-900/95 border border-stone-600 rounded-lg shadow-xl text-stone-200 z-50 overflow-hidden text-sm flex flex-col pointer-events-none">
+    <div className="absolute top-4 left-4 w-64 bg-stone-900/95 border border-stone-600 rounded-lg shadow-xl text-stone-200 z-50 overflow-hidden text-sm flex flex-col pointer-events-auto">
       {/* Header */}
       <div className="px-3 py-2 bg-stone-800 border-b border-stone-700 font-bold flex justify-between items-center text-sm">
         <span className="truncate">{card.name}</span>
         <span className="text-amber-400 shrink-0 ml-2">COST {card.cost}</span>
+        <button onClick={onClose} className="ml-2 text-stone-400 hover:text-stone-200"><X className="w-4 h-4" /></button>
       </div>
       
       {/* Type & Faction */}

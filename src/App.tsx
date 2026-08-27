@@ -182,7 +182,7 @@ export const App: React.FC = () => {
       </main>
 
       {/* Global Card Detail Modal */}
-      <CardInfoPanel card={inspectedCard} />
+      <CardInfoPanel card={inspectedCard} onClose={() => setInspectedCard(null)} />
     </div>
   );
 };
