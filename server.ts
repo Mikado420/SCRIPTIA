@@ -15,8 +15,14 @@ const PORT = 3000;
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
+    origin: [
+      "https://mikado420.github.io",
+      "http://localhost:5173",
+      "http://localhost:3000",
+      /^https:\/\/ais-.*\.run\.app$/
+    ],
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 
@@ -191,7 +197,7 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log(`Socket disconnected: ${socket.id}`);
     // Find room and notify opponent
-    for (const [code, room] of rooms.entries()) {
+    for (const [code, room] of Array.from(rooms.entries())) {
       if (room.hostSocketId === socket.id || room.guestSocketId === socket.id) {
         io.to(code).emit('opponent_disconnected');
         // We could implement reconnection timeout here, but for now just cleanup if empty
