@@ -742,22 +742,22 @@ export function runAllRuleTests(): TestResult[] {
     });
   }
 
-  // 13. No Summoning Sickness (Units Can Attack On Summoned Turn)
+  // 13. Summoning Sickness Rules (Normal units cannot attack on summon turn, but can guard; Haste & Evolve can attack; Next turn can attack)
   {
     const start = performance.now();
     const engine = new GameEngine(12345);
     const redDeck = PRESET_DECKS[0];
     const blueDeck = PRESET_DECKS[1];
-    const state = engine.createInitialState('test_no_sickness', redDeck.cards, blueDeck.cards);
+    const state = engine.createInitialState('test_sickness_rules', redDeck.cards, blueDeck.cards);
 
     // Give Player A active arcana
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
       state.playerA.arcana.push({ instance: state.playerA.deck.shift()!, isRested: false });
     }
 
-    const a04Card = CARD_MAP.get('A-04')!; // Normal Unit (No Haste keyword)
+    const a04Card = CARD_MAP.get('A-04')!; // Normal Unit (No Haste)
     state.playerA.hand.push({
-      instanceId: 'fresh_unit',
+      instanceId: 'fresh_normal_unit',
       cardId: 'A-04',
       baseCard: a04Card,
       ownerId: 'PLAYER_A',
@@ -775,23 +775,67 @@ export function runAllRuleTests(): TestResult[] {
     const summonResult = engine.step(state, {
       type: 'PLAY_UNIT',
       playerId: 'PLAYER_A',
-      payload: { cardInstanceId: 'fresh_unit' },
+      payload: { cardInstanceId: 'fresh_normal_unit' },
     });
 
-    const actions = engine.getLegalActions(summonResult.nextState);
-    const canAttackFresh = actions.some(
-      (a) => a.action.type === 'ATTACK' && (a.action.payload as any).attackerInstanceId === 'fresh_unit'
+    const actionsAfterSummon = engine.getLegalActions(summonResult.nextState);
+    const canAttackFreshNormal = actionsAfterSummon.some(
+      (a) => a.action.type === 'ATTACK' && (a.action.payload as any).attackerInstanceId === 'fresh_normal_unit'
     );
 
+    // 1. Fresh normal unit CANNOT attack on summon turn
+    const sicknessEnforced = !canAttackFreshNormal;
+
+    // 2. Fresh Haste unit CAN attack
+    const a05Card = CARD_MAP.get('A-05')!; // Haste unit
+    summonResult.nextState.playerA.hand.push({
+      instanceId: 'haste_unit',
+      cardId: 'A-05',
+      baseCard: a05Card,
+      ownerId: 'PLAYER_A',
+      currentCost: 3,
+      currentAtk: 20,
+      currentDef: 10,
+      currentBrk: 1,
+      isRested: false,
+      summonedTurn: 1,
+      hasSummoningSickness: false,
+      buffs: [],
+    });
+    // Un-rest arcana for test
+    summonResult.nextState.playerA.arcana.forEach(a => a.isRested = false);
+    const hasteSummonResult = engine.step(summonResult.nextState, {
+      type: 'PLAY_UNIT',
+      playerId: 'PLAYER_A',
+      payload: { cardInstanceId: 'haste_unit' },
+    });
+    const actionsAfterHaste = engine.getLegalActions(hasteSummonResult.nextState);
+    const canAttackHaste = actionsAfterHaste.some(
+      (a) => a.action.type === 'ATTACK' && (a.action.payload as any).attackerInstanceId === 'haste_unit'
+    );
+
+    // 3. Normal unit CAN attack on next turn
+    // End Player A's turn, then End Player B's turn to get back to Player A
+    const endTurnA = engine.step(hasteSummonResult.nextState, { type: 'END_TURN', playerId: 'PLAYER_A', payload: {} });
+    endTurnA.nextState.phase = 'ACTION';
+    const endTurnB = engine.step(endTurnA.nextState, { type: 'END_TURN', playerId: 'PLAYER_B', payload: {} });
+    endTurnB.nextState.phase = 'ACTION';
+    const actionsNextTurn = engine.getLegalActions(endTurnB.nextState);
+    const canAttackNextTurn = actionsNextTurn.some(
+      (a) => a.action.type === 'ATTACK' && (a.action.payload as any).attackerInstanceId === 'fresh_normal_unit'
+    );
+
+    const allPassed = sicknessEnforced && canAttackHaste && canAttackNextTurn;
+
     results.push({
-      testId: 'test_no_summoning_sickness',
+      testId: 'test_summoning_sickness',
       category: 'CORE_RULE',
-      name: '召喚酔い廃止 (召喚ターン即時攻撃可能)',
-      description: 'ルールVer.0.03に基づき召喚されたユニットがそのターンに攻撃可能か検証',
-      passed: canAttackFresh,
-      message: canAttackFresh
-        ? '召喚したばかりの通常ユニットがそのターン即座に攻撃可能であることを確認しました。'
-        : '召喚したユニットが攻撃できません (召喚酔い判定が残存しています)。',
+      name: '召喚酔い (通常召喚ターン攻撃不可/速攻攻撃可/次ターン攻撃可)',
+      description: 'ルールVer.0.03に基づき通常ユニットの召喚酔い、速攻ユニットの即時攻撃、次ターンの攻撃権付与を検証',
+      passed: allPassed,
+      message: allPassed
+        ? '通常ユニットの召喚酔い・速攻ユニットの即時攻撃・次ターンの攻撃可能化が正常に機能していることを確認しました。'
+        : `召喚酔い判定異常 (通常攻撃不可: ${sicknessEnforced}, 速攻攻撃可: ${canAttackHaste}, 次ターン攻撃可: ${canAttackNextTurn})`,
       durationMs: parseFloat((performance.now() - start).toFixed(2)),
     });
   }

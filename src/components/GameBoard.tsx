@@ -176,6 +176,46 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     };
   }, [deckAId, deckBId]);
 
+  const playActionAudio = (action: Action, prevState?: GameState, nextState?: GameState) => {
+    switch (action.type) {
+      case 'PLAY_UNIT':
+        audioService.playSummon();
+        break;
+      case 'EVOLVE':
+        audioService.playEvolve();
+        break;
+      case 'PLAY_SPELL':
+        audioService.playSpell();
+        break;
+      case 'ATTACK':
+        audioService.playAttack();
+        break;
+      case 'GUARD':
+        if ((action.payload as any)?.doGuard) {
+          audioService.playGuard();
+        }
+        break;
+      case 'SET_RUNE':
+      case 'PLAY_DOMAIN':
+        audioService.playSpell();
+        break;
+      default:
+        break;
+    }
+    if (prevState && nextState) {
+      if (nextState.playerA.barrier < prevState.playerA.barrier || nextState.playerB.barrier < prevState.playerB.barrier) {
+        audioService.playDamage();
+      } else if (
+        (nextState.playerA.archive.length > prevState.playerA.archive.length ||
+          nextState.playerB.archive.length > prevState.playerB.archive.length) &&
+        action.type !== 'SET_ARCANA' &&
+        action.type !== 'EVOLVE'
+      ) {
+        audioService.playDestroy();
+      }
+    }
+  };
+
   // Execute an action with synchronous locking and matchId check
   const handleExecuteAction = (action: Action) => {
     if (!gameState || gameState.gameStatus !== 'IN_PROGRESS' || isProcessingStep || isActionExecutingRef.current) {
@@ -192,6 +232,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       const { nextState, log } = engine.step(gameState, action);
       verifyGameInvariants(nextState, `Action_${action.type}`);
 
+      playActionAudio(action, gameState, nextState);
       setGameState(nextState);
       setGameLogs((prev) => [...prev, log]);
 
@@ -254,6 +295,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       const { nextState, log } = engine.step(gameState, decision.selectedAction);
       verifyGameInvariants(nextState, `AI_Action_${decision.selectedAction.type}`);
 
+      playActionAudio(decision.selectedAction, gameState, nextState);
       setGameState(nextState);
       setGameLogs((prev) => [...prev, log]);
 
