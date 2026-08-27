@@ -85,9 +85,6 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
     description: '',
   });
 
-  // Mobile navigation tab
-  const [mobileTab, setMobileTab] = useState<MobileTab>('POOL');
-
   // Filters & Search
   const [filterFaction, setFilterFaction] = useState<FactionCode | 'ALL'>('ALL');
   const [filterType, setFilterType] = useState<string>('ALL');
@@ -771,56 +768,18 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
             </div>
           )}
         </div>
-
-        {/* Mobile Tab Switcher */}
-        <div className="flex lg:hidden items-center gap-1 bg-stone-950 p-1 rounded-xl border border-stone-800 shrink-0">
-          <button
-            onClick={() => setMobileTab('POOL')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-              mobileTab === 'POOL' ? 'bg-amber-500 text-stone-950' : 'text-stone-400 hover:text-white'
-            }`}
-          >
-            カード一覧
-          </button>
-          <button
-            onClick={() => setMobileTab('DECK')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-              mobileTab === 'DECK' ? 'bg-amber-500 text-stone-950' : 'text-stone-400 hover:text-white'
-            }`}
-          >
-            デッキ ({deckCards.length})
-          </button>
-          <button
-            onClick={() => setMobileTab('ANALYSIS')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-              mobileTab === 'ANALYSIS'
-                ? 'bg-amber-500 text-stone-950'
-                : 'text-stone-400 hover:text-white'
-            }`}
-          >
-            分析
-          </button>
-        </div>
       </div>
 
       {/* ============================================================ */}
-      {/* 3. MAIN WORKSPACE (SIDE-BY-SIDE ON PC, TABBED ON MOBILE) */}
+      {/* 3. MAIN WORKSPACE (SIDE-BY-SIDE ON ALL SCREENS) */}
       {/* ============================================================ */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
+      <div className="flex flex-col lg:grid lg:grid-cols-12 gap-2 lg:gap-3.5 h-[calc(100vh-140px)] lg:h-auto overflow-hidden lg:overflow-visible">
         {/* ---------------------------------------------------------- */}
         {/* LEFT COLUMN: ACTIVE DECK LIST & STATS (4 cols on Desktop)  */}
         {/* ---------------------------------------------------------- */}
-        <div
-          className={`lg:col-span-4 space-y-3.5 ${
-            mobileTab === 'POOL' ? 'hidden lg:block' : 'block'
-          }`}
-        >
+        <div className="flex-shrink-0 h-[40%] lg:h-auto lg:col-span-4 flex flex-col gap-2 lg:space-y-3.5 min-h-0">
           {/* Adopted Cards Panel */}
-          <div
-            className={`bg-stone-900 border border-stone-800 rounded-2xl p-3 shadow-lg flex flex-col ${
-              mobileTab === 'ANALYSIS' ? 'hidden lg:flex' : 'flex'
-            } h-[460px] lg:h-[540px]`}
-          >
+          <div className="bg-stone-900 border border-stone-800 rounded-2xl p-2 lg:p-3 shadow-lg flex flex-col flex-1 min-h-0 lg:h-[540px]">
             <div className="flex items-center justify-between pb-2 border-b border-stone-800 mb-2">
               <span className="text-xs font-black text-stone-200 flex items-center gap-1.5">
                 <Layers className="w-3.5 h-3.5 text-amber-400" />
@@ -914,11 +873,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
           </div>
 
           {/* Quick Analytics & Mana Curve Panel */}
-          <div
-            className={`bg-stone-900 border border-stone-800 rounded-2xl p-3 shadow-lg space-y-2.5 ${
-              mobileTab === 'DECK' ? 'hidden lg:block' : 'block'
-            }`}
-          >
+          <div className="hidden lg:block bg-stone-900 border border-stone-800 rounded-2xl p-3 shadow-lg space-y-2.5">
             <div className="flex items-center justify-between pb-1.5 border-b border-stone-800">
               <span className="text-xs font-black text-stone-200 flex items-center gap-1">
                 <BarChart2 className="w-3.5 h-3.5 text-amber-400" />
@@ -979,11 +934,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
         {/* ---------------------------------------------------------- */}
         {/* RIGHT COLUMN: CARD MASTER POOL (8 cols on Desktop)         */}
         {/* ---------------------------------------------------------- */}
-        <div
-          className={`lg:col-span-8 space-y-3 ${
-            mobileTab !== 'POOL' ? 'hidden lg:block' : 'block'
-          }`}
-        >
+        <div className="flex-1 min-h-0 lg:col-span-8 flex flex-col gap-2 lg:space-y-3">
           {/* Card Pool Filters Bar */}
           <div className="bg-stone-900 border border-stone-800 rounded-2xl p-2.5 shadow-lg space-y-2">
             {/* Top Filter Row: Search & Faction Buttons */}
@@ -1106,7 +1057,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({
           </div>
 
           {/* Cards Grid */}
-          <div className="bg-stone-900 border border-stone-800 rounded-2xl p-3 shadow-lg min-h-[460px] lg:min-h-[540px]">
+          <div className="bg-stone-900 border border-stone-800 rounded-2xl p-2 lg:p-3 shadow-lg flex-1 min-h-0 overflow-y-auto">
             {filteredAndSortedPool.length === 0 ? (
               <div className="h-64 flex flex-col items-center justify-center text-stone-500 space-y-2">
                 <Search className="w-8 h-8 text-stone-600 stroke-1" />

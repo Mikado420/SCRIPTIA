@@ -43,6 +43,9 @@ interface GameBoardProps {
   customDecks: Deck[];
   initialDeckAId?: string;
   hasApiKey: boolean;
+  externalState?: GameState | null;
+  myPlayerId?: PlayerId;
+  onExternalAction?: (action: Action) => void;
 }
 
 interface DragState {
@@ -61,6 +64,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   customDecks,
   initialDeckAId,
   hasApiKey,
+  externalState,
+  myPlayerId,
+  onExternalAction,
 }) => {
   const allAvailableDecks = [...customDecks, ...PRESET_DECKS];
 
@@ -182,12 +188,22 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   };
 
   useEffect(() => {
+    if (externalState) {
+      setGameState(externalState);
+      const actions = engine.getLegalActions(externalState);
+      setLegalActions(actions);
+      // Optional: sync logs if provided
+    }
+  }, [externalState, engine]);
+
+  useEffect(() => {
+    if (externalState) return;
     startNewMatch();
     return () => {
       if (autoPlayTimerRef.current) clearInterval(autoPlayTimerRef.current);
       matchIdRef.current = '';
     };
-  }, [deckAId, deckBId]);
+  }, [deckAId, deckBId, externalState]);
 
   // Global reset listener for app-switch, tab-switch, orientation change, or window blur
   useEffect(() => {
@@ -278,6 +294,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   // Execute Action
   const handleExecuteAction = (action: Action) => {
     if (!gameState || gameState.gameStatus !== 'IN_PROGRESS' || isProcessingStep || isActionExecutingRef.current) {
+      return;
+    }
+
+    if (onExternalAction) {
+      onExternalAction(action);
       return;
     }
 
@@ -579,8 +600,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     );
   }
 
-  const pA = gameState.playerA;
-  const pB = gameState.playerB;
+  const isPlayerB = myPlayerId === 'PLAYER_B';
+  const pA = isPlayerB ? gameState.playerB : gameState.playerA;
+  const pB = isPlayerB ? gameState.playerA : gameState.playerB;
   const activeArcanaCountA = pA.arcana.filter((a) => !a.isRested).length;
   const activeArcanaCountB = pB.arcana.filter((a) => !a.isRested).length;
 
@@ -590,7 +612,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   } else if (gameState.phase === 'RUNE_STEP' && gameState.pendingTrigger) {
     respondingPlayerId = gameState.pendingTrigger.triggeringPlayerId;
   }
-  const isHumanTurn = respondingPlayerId === 'PLAYER_A' ? !playerAIsAI : !playerBIsAI;
+  
+  // If myPlayerId is provided, we are in external mode. Human is the active player if respondingPlayerId === myPlayerId
+  const isHumanTurn = myPlayerId 
+    ? respondingPlayerId === myPlayerId
+    : respondingPlayerId === 'PLAYER_A' ? !playerAIsAI : !playerBIsAI;
 
   const legalAttacksForSelectedAttacker = legalActions.filter(
     (leg) =>
@@ -631,6 +657,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             isOpponent={true}
             isAI={playerBIsAI}
             activeArcanaCount={activeArcanaCountB}
+            isActiveTurn={gameState.activePlayer === pB.playerId}
             isTargetableForAttack={canAttackOpponentLeader}
             isHoveredDropZone={hoveredDropZone === 'OPPONENT_LEADER'}
             onOpenArchive={() => setArchiveModalTarget('B')}
@@ -752,6 +779,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               isOpponent={false}
               isAI={playerAIsAI}
               activeArcanaCount={activeArcanaCountA}
+              isActiveTurn={gameState.activePlayer === pA.playerId}
               canPlaceArcana={canPlaceArcana}
               isHoveredDropZone={hoveredDropZone === 'ARCANA_ZONE'}
               onOpenArchive={() => setArchiveModalTarget('A')}

@@ -1,7 +1,7 @@
 import React from 'react';
-import { Swords, Activity, BarChart3, RotateCcw, Wrench, Bug, Sparkles } from 'lucide-react';
+import { Swords, Activity, BarChart3, RotateCcw, Wrench, Bug, Sparkles, Globe } from 'lucide-react';
 
-export type AppTab = 'BATTLE' | 'VERIFY' | 'ANALYTICS' | 'REPLAY' | 'DECK_BUILDER' | 'DEBUG';
+export type AppTab = 'BATTLE' | 'VERIFY' | 'ANALYTICS' | 'REPLAY' | 'DECK_BUILDER' | 'DEBUG' | 'MULTIPLAYER';
 
 interface NavbarProps {
   activeTab: AppTab;
@@ -12,6 +12,7 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, hasApiKey }) => {
   const tabs = [
     { id: 'BATTLE', label: '対戦', icon: Swords, desc: 'Human / AI対戦プレイ' },
+    { id: 'MULTIPLAYER', label: 'オンライン対戦', icon: Globe, desc: 'ルームコードで対戦' },
     { id: 'DECK_BUILDER', label: 'デッキ構築', icon: Wrench, desc: '40枚デッキ編集' },
     { id: 'VERIFY', label: 'AI検証', icon: Activity, desc: '大量対戦シミュレーション' },
     { id: 'ANALYTICS', label: '勝率分析', icon: BarChart3, desc: '相性・カード採用率' },

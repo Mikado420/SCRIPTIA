@@ -7,6 +7,7 @@ interface PlayerHUDProps {
   isOpponent: boolean;
   isAI: boolean;
   activeArcanaCount: number;
+  isActiveTurn?: boolean;
   isTargetableForAttack?: boolean;
   isHoveredDropZone?: boolean;
   canPlaceArcana?: boolean;
@@ -21,6 +22,7 @@ export const PlayerHUD: React.FC<PlayerHUDProps> = ({
   isOpponent,
   isAI,
   activeArcanaCount,
+  isActiveTurn = false,
   isTargetableForAttack = false,
   isHoveredDropZone = false,
   canPlaceArcana = false,
@@ -32,10 +34,12 @@ export const PlayerHUD: React.FC<PlayerHUDProps> = ({
   return (
     <div
       className={`w-full flex items-center justify-between px-1 sm:px-2 py-0.5 text-xs select-none gap-1 sm:gap-1.5 shrink-0 ${
-        isOpponent
-          ? 'bg-stone-950/90'
-          : 'bg-stone-950/95'
-      }`}
+        isActiveTurn 
+          ? (isOpponent ? 'bg-sky-950/40 border-b border-sky-900/50 shadow-[0_4px_12px_rgba(14,165,233,0.15)]' : 'bg-amber-950/40 border-t border-amber-900/50 shadow-[0_-4px_12px_rgba(245,158,11,0.15)]') 
+          : isOpponent
+            ? 'bg-stone-950/90'
+            : 'bg-stone-950/95'
+      } transition-colors duration-300`}
     >
       {/* Left: Player Identity & Barrier & Deck & Archive */}
       <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
@@ -57,6 +61,11 @@ export const PlayerHUD: React.FC<PlayerHUDProps> = ({
           <span className="font-bold text-[8px] sm:text-[10px] truncate max-w-[55px] sm:max-w-[90px]">
             {player.name}
           </span>
+          {isActiveTurn && (
+            <span className={`text-[7px] px-1 rounded-sm font-black animate-pulse ${isOpponent ? 'bg-sky-600 text-white' : 'bg-amber-500 text-stone-950'}`}>
+              TURN
+            </span>
+          )}
         </div>
 
         {/* Barrier (結界) */}
@@ -105,6 +114,14 @@ export const PlayerHUD: React.FC<PlayerHUDProps> = ({
             </span>
           )}
         </div>
+
+        {/* Hand Count (Especially important for opponent) */}
+        <span
+          className="px-1 py-0.5 rounded bg-stone-900 border border-stone-800 text-stone-400 font-mono text-[8px] sm:text-[9px]"
+          title="手札の残り枚数"
+        >
+          手札:{player.hand.length}
+        </span>
 
         {/* Deck Count */}
         <span

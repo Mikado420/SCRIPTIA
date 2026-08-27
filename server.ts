@@ -3,11 +3,22 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import { GameEngine } from './src/engine/gameEngine.js';
+import { GameState, Action, PlayerId } from './src/types/game.js';
 
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 
 app.use(express.json({ limit: '10mb' }));
 
@@ -23,6 +34,171 @@ function getGenAI(): GoogleGenAI | null {
   }
   return genAIClient;
 }
+
+// ==========================================
+// Multiplayer Server State
+// ==========================================
+
+interface Room {
+  id: string;
+  hostSocketId: string;
+  guestSocketId: string | null;
+  hostDeckId?: string;
+  guestDeckId?: string;
+  hostCards?: any[];
+  guestCards?: any[];
+  hostReady: boolean;
+  guestReady: boolean;
+  gameState: GameState | null;
+  engine: GameEngine | null;
+}
+
+const rooms = new Map<string, Room>();
+
+function generateRoomCode() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+// Client State Sanitizer (Hides opponent's hand/deck)
+function sanitizeGameState(state: GameState, playerId: PlayerId): GameState {
+  const safeState = JSON.parse(JSON.stringify(state)); // Deep copy
+  const opponentId = playerId === 'PLAYER_A' ? 'playerB' : 'playerA';
+  
+  // Hide opponent deck and hand contents but keep lengths / instance IDs
+  const opponent = safeState[opponentId];
+  if (opponent) {
+    opponent.deck = opponent.deck.map((c: any) => ({ instanceId: c.instanceId, baseCard: { name: 'Hidden Card' } }));
+    opponent.hand = opponent.hand.map((c: any) => ({ instanceId: c.instanceId, baseCard: { name: 'Hidden Card' } }));
+  }
+  return safeState;
+}
+
+io.on('connection', (socket) => {
+  console.log(`Socket connected: ${socket.id}`);
+
+  socket.on('create_room', (data) => {
+    if (data?.version !== '2.3') {
+      return socket.emit('error', 'クライアントのバージョンがサーバーと異なります (Required: v2.3)。リロードしてください。');
+    }
+    const code = generateRoomCode();
+    rooms.set(code, {
+      id: code,
+      hostSocketId: socket.id,
+      guestSocketId: null,
+      hostReady: false,
+      guestReady: false,
+      gameState: null,
+      engine: null
+    });
+    socket.join(code);
+    socket.emit('room_created', { code });
+  });
+
+  socket.on('join_room', (data) => {
+    if (data?.version !== '2.3') {
+      return socket.emit('error', 'クライアントのバージョンがサーバーと異なります (Required: v2.3)。リロードしてください。');
+    }
+    const room = rooms.get(data.code);
+    if (!room) {
+      return socket.emit('error', 'Room not found');
+    }
+    if (room.guestSocketId) {
+      // Reconnect logic or full
+      if (room.hostSocketId !== socket.id && room.guestSocketId !== socket.id) {
+         return socket.emit('error', 'Room is full');
+      }
+    }
+    
+    room.guestSocketId = socket.id;
+    socket.join(data.code);
+    
+    io.to(data.code).emit('room_joined', { code: data.code });
+  });
+
+  socket.on('player_ready', (data) => {
+    const room = rooms.get(data.code);
+    if (!room) return;
+    
+    if (socket.id === room.hostSocketId) {
+      room.hostReady = true;
+      room.hostCards = data.deckCards;
+    } else if (socket.id === room.guestSocketId) {
+      room.guestReady = true;
+      room.guestCards = data.deckCards;
+    }
+
+    io.to(data.code).emit('player_ready_state', {
+      hostReady: room.hostReady,
+      guestReady: room.guestReady
+    });
+
+    if (room.hostReady && room.guestReady && room.hostCards && room.guestCards && !room.gameState) {
+      room.engine = new GameEngine(Date.now());
+      room.gameState = room.engine.createInitialState(
+        `game_${data.code}`,
+        room.hostCards.map((c: any) => c.cardId),
+        room.guestCards.map((c: any) => c.cardId),
+        'Player 1',
+        'Player 2',
+        false,
+        false,
+        'HUMAN',
+        'HUMAN'
+      );
+      
+      // Send initialized state
+      io.to(room.hostSocketId).emit('game_started', {
+        playerId: 'PLAYER_A',
+        state: sanitizeGameState(room.gameState, 'PLAYER_A')
+      });
+      io.to(room.guestSocketId).emit('game_started', {
+        playerId: 'PLAYER_B',
+        state: sanitizeGameState(room.gameState, 'PLAYER_B')
+      });
+    }
+  });
+
+  socket.on('action', (data) => {
+    const room = rooms.get(data.code);
+    if (!room || !room.gameState || !room.engine) return;
+
+    try {
+      const playerId = socket.id === room.hostSocketId ? 'PLAYER_A' : 'PLAYER_B';
+      
+      // Verify action validity? For now let engine step handle logic
+      const { nextState, log } = room.engine.step(room.gameState, data.action);
+      room.gameState = nextState;
+
+      io.to(room.hostSocketId).emit('state_update', {
+        state: sanitizeGameState(room.gameState, 'PLAYER_A'),
+        log
+      });
+      io.to(room.guestSocketId!).emit('state_update', {
+        state: sanitizeGameState(room.gameState, 'PLAYER_B'),
+        log
+      });
+    } catch (e) {
+      console.error(e);
+      socket.emit('error', 'Action failed');
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`Socket disconnected: ${socket.id}`);
+    // Find room and notify opponent
+    for (const [code, room] of rooms.entries()) {
+      if (room.hostSocketId === socket.id || room.guestSocketId === socket.id) {
+        io.to(code).emit('opponent_disconnected');
+        // We could implement reconnection timeout here, but for now just cleanup if empty
+      }
+    }
+  });
+});
 
 // ==========================================
 // API Routes
@@ -220,7 +396,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`TCG Simulator Server running on http://localhost:${PORT}`);
   });
 }

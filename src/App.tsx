@@ -14,6 +14,8 @@ import { pwaController, PWAState } from './pwa';
 import { safeStorage } from './utils/storage';
 import { Sparkles, RefreshCw, X } from 'lucide-react';
 
+import { MultiplayerView } from './components/MultiplayerView';
+
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AppTab>('BATTLE');
   const [hasApiKey, setHasApiKey] = useState<boolean>(false);
@@ -180,6 +182,14 @@ export const App: React.FC = () => {
             customDecks={customDecks}
             initialDeckAId={selectedBattleDeckId}
             hasApiKey={hasApiKey}
+          />
+        )}
+
+        {activeTab === 'MULTIPLAYER' && (
+          <MultiplayerView
+            customDecks={customDecks}
+            hasApiKey={hasApiKey}
+            onNavigateTab={setActiveTab}
           />
         )}
 
