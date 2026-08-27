@@ -29,15 +29,15 @@ export const HandZone: React.FC<HandZoneProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const cardCount = hand.length;
 
-  // Calculate dynamic overlap based on card count (supporting up to 15 cards)
+  // Calculate dynamic overlap based on card count (supporting up to 15+ cards without overflow)
   const getMarginLeft = (index: number) => {
     if (index === 0) return 0;
     if (cardCount <= 3) return 6; // slight gap
     if (cardCount <= 5) return -8;
     if (cardCount <= 7) return -18;
-    if (cardCount <= 9) return -28;
-    if (cardCount <= 12) return -38;
-    return -44; // 13-15+ cards
+    if (cardCount <= 9) return -26;
+    if (cardCount <= 12) return -34;
+    return -42; // 13-15+ cards
   };
 
   const selectedCard = hand.find((c) => c.instanceId === selectedHandInstanceId);
@@ -51,7 +51,7 @@ export const HandZone: React.FC<HandZoneProps> = ({
   return (
     <div
       ref={containerRef}
-      className="relative w-full shrink-0 flex flex-col items-center justify-end px-1 pb-0.5 pointer-events-auto h-[74px] sm:h-[82px] md:h-[90px] overflow-visible"
+      className="relative w-full shrink-0 flex flex-col items-center justify-end px-1 pb-0.5 pointer-events-auto min-h-[72px] sm:min-h-[80px] md:min-h-[88px] overflow-visible"
     >
       {/* Hand Cards Fan Container */}
       <div className="flex items-end justify-center max-w-full overflow-visible transition-all">
@@ -79,16 +79,17 @@ export const HandZone: React.FC<HandZoneProps> = ({
                     onSelectCard(null);
                   } else {
                     onSelectCard(card.instanceId);
+                    onInspectCard(card.baseCard);
                   }
                 }}
                 style={{
                   marginLeft: `${marginLeft}px`,
-                  zIndex: isSelected ? 40 : index + 10,
+                  zIndex: isSelected ? 45 : index + 10,
                 }}
                 className={`transition-all duration-150 transform cursor-pointer shrink-0 ${
                   isSelected
-                    ? '-translate-y-4 scale-105 shadow-xl z-40'
-                    : 'hover:-translate-y-2 hover:scale-105 hover:z-30'
+                    ? '-translate-y-3 sm:-translate-y-4 scale-105 shadow-xl z-45'
+                    : 'hover:-translate-y-1.5 hover:scale-105 hover:z-30'
                 }`}
               >
                 <CardItem
@@ -107,7 +108,7 @@ export const HandZone: React.FC<HandZoneProps> = ({
 
       {/* Floating Action Ribbon when a Card is Selected */}
       {selectedCard && isHumanTurn && (
-        <div className="absolute -top-9 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-stone-900/98 border border-amber-400/90 rounded-full px-2.5 py-0.5 shadow-2xl z-50 animate-fade-in backdrop-blur-md whitespace-nowrap">
+        <div className="absolute -top-8 sm:-top-9 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-stone-950/98 border border-amber-400/90 rounded-full px-2 sm:px-2.5 py-0.5 shadow-2xl z-50 animate-fade-in backdrop-blur-md whitespace-nowrap">
           {/* Phase Specific Fast Actions */}
           {phase === 'ARCANA' ? (
             <button
@@ -120,7 +121,7 @@ export const HandZone: React.FC<HandZoneProps> = ({
                 );
                 if (arcAction) onExecuteAction(arcAction.action);
               }}
-              className="px-2.5 py-1 rounded-full bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-black flex items-center gap-1 shadow-md active:scale-95 transition-all"
+              className="px-2.5 py-1 rounded-full bg-amber-500 hover:bg-amber-400 text-stone-950 text-[11px] sm:text-xs font-black flex items-center gap-1 shadow-md active:scale-95 transition-all"
             >
               <Flame className="w-3 h-3 fill-current" />
               <span>アルカナにセット</span>
@@ -136,10 +137,10 @@ export const HandZone: React.FC<HandZoneProps> = ({
                 );
                 if (resolveAction) onExecuteAction(resolveAction.action);
               }}
-              className="px-2.5 py-1 rounded-full bg-indigo-500 hover:bg-indigo-400 text-stone-950 text-xs font-black flex items-center gap-1 shadow-md active:scale-95 transition-all"
+              className="px-2.5 py-1 rounded-full bg-indigo-500 hover:bg-indigo-400 text-stone-950 text-[11px] sm:text-xs font-black flex items-center gap-1 shadow-md active:scale-95 transition-all"
             >
               <Zap className="w-3 h-3 fill-current" />
-              <span>アルカナに置く</span>
+              <span>効果の対象に指定</span>
             </button>
           ) : selectedHandActions.length > 0 ? (
             selectedHandActions.map((act, i) => (
@@ -149,14 +150,14 @@ export const HandZone: React.FC<HandZoneProps> = ({
                   e.stopPropagation();
                   onExecuteAction(act.action);
                 }}
-                className="px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 text-xs font-black flex items-center gap-1 shadow-md active:scale-95 transition-all"
+                className="px-2.5 sm:px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 text-[11px] sm:text-xs font-black flex items-center gap-1 shadow-md active:scale-95 transition-all"
               >
                 <span>{act.description}</span>
                 <ArrowRight className="w-3 h-3" />
               </button>
             ))
           ) : (
-            <span className="text-[11px] text-stone-400 px-1 font-medium">
+            <span className="text-[10px] sm:text-[11px] text-stone-400 px-1 font-medium">
               現在プレイ不可
             </span>
           )}
@@ -167,7 +168,7 @@ export const HandZone: React.FC<HandZoneProps> = ({
               e.stopPropagation();
               onInspectCard(selectedCard.baseCard);
             }}
-            className="px-2.5 py-1 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold flex items-center gap-1 border border-stone-700 active:scale-95 transition-all"
+            className="px-2 py-1 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-200 text-[10px] sm:text-xs font-bold flex items-center gap-0.5 border border-stone-700 active:scale-95 transition-all"
             title="カード詳細"
           >
             <Info className="w-3 h-3 text-amber-400" />

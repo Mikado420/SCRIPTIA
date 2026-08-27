@@ -32,6 +32,15 @@ export const BattlefieldZone: React.FC<BattlefieldZoneProps> = ({
   onPointerDownUnit,
 }) => {
   const dropzoneId = isOpponent ? 'OPPONENT_BATTLEFIELD' : 'PLAYER_BATTLEFIELD';
+  const unitCount = units.length;
+
+  // Dynamic spacing based on unit count (up to 6 units per field)
+  const getGapClass = () => {
+    if (unitCount <= 3) return 'gap-1.5 sm:gap-3 md:gap-4';
+    if (unitCount === 4) return 'gap-1 sm:gap-2 md:gap-3';
+    if (unitCount === 5) return 'gap-0.5 sm:gap-1.5 md:gap-2';
+    return 'gap-0.5 sm:gap-1 md:gap-1.5'; // 6 units
+  };
 
   // Legal attacks for the currently selected attacker
   const legalAttacksForAttacker = legalActions.filter(
@@ -43,14 +52,14 @@ export const BattlefieldZone: React.FC<BattlefieldZoneProps> = ({
   return (
     <div
       data-dropzone={dropzoneId}
-      className={`flex-1 w-full flex items-center justify-center gap-1 sm:gap-2 px-2 overflow-visible relative z-10 transition-colors ${
+      className={`flex-1 w-full max-w-full flex items-center justify-center ${getGapClass()} px-1 sm:px-2 overflow-visible relative z-10 transition-colors ${
         !isOpponent && dragSource === 'HAND' && phase === 'ACTION'
           ? 'bg-emerald-950/20 ring-1 ring-emerald-500/40 rounded-xl'
           : ''
       }`}
     >
-      {units.length === 0 ? (
-        <div className="w-full h-full flex items-center justify-center select-none pointer-events-none">
+      {unitCount === 0 ? (
+        <div className="w-full h-full flex items-center justify-center select-none pointer-events-none min-h-[50px]">
           {!isOpponent && dragSource === 'HAND' && (
             <div className="text-[9px] text-emerald-400 font-bold animate-pulse px-3 py-1 bg-emerald-950/40 border border-dashed border-emerald-500/50 rounded-full">
               ドロップして召喚
@@ -107,6 +116,7 @@ export const BattlefieldZone: React.FC<BattlefieldZoneProps> = ({
                     if (guardAction) onExecuteAction(guardAction.action);
                   } else if (canAttack) {
                     onSelectAttacker(isSelected ? null : unit.instanceId);
+                    onInspectCard(unit.baseCard);
                   } else {
                     onInspectCard(unit.baseCard);
                   }
@@ -115,7 +125,7 @@ export const BattlefieldZone: React.FC<BattlefieldZoneProps> = ({
                 }
               }}
               className={`relative shrink-0 transition-transform duration-150 ${
-                isSelected ? '-translate-y-2 scale-105' : ''
+                isSelected ? '-translate-y-1.5 sm:-translate-y-2 scale-105 z-30' : 'hover:z-20'
               }`}
             >
               <CardItem

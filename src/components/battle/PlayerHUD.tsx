@@ -31,7 +31,7 @@ export const PlayerHUD: React.FC<PlayerHUDProps> = ({
 }) => {
   return (
     <div
-      className={`w-full flex items-center justify-between px-1.5 sm:px-2 py-0.5 text-xs select-none gap-1 sm:gap-1.5 shrink-0 ${
+      className={`w-full flex items-center justify-between px-1 sm:px-2 py-0.5 text-xs select-none gap-1 sm:gap-1.5 shrink-0 ${
         isOpponent
           ? 'bg-stone-950/90'
           : 'bg-stone-950/95'
@@ -54,7 +54,7 @@ export const PlayerHUD: React.FC<PlayerHUDProps> = ({
           >
             {isAI ? <Bot className="w-2 h-2" /> : <User className="w-2 h-2" />}
           </div>
-          <span className="font-bold text-[9px] sm:text-[10px] truncate max-w-[60px] sm:max-w-[90px]">
+          <span className="font-bold text-[8px] sm:text-[10px] truncate max-w-[55px] sm:max-w-[90px]">
             {player.name}
           </span>
         </div>
@@ -82,15 +82,15 @@ export const PlayerHUD: React.FC<PlayerHUDProps> = ({
             }`}
           />
           <span className="text-[8px] text-stone-400 font-bold hidden xs:inline">結界</span>
-          <span className="font-mono font-black text-xs text-white">{player.barrier}</span>
-          <span className="font-mono text-[8px] text-stone-500">/5</span>
+          <span className="font-mono font-black text-[11px] sm:text-xs text-white">{player.barrier}</span>
+          <span className="font-mono text-[7px] sm:text-[8px] text-stone-500">/5</span>
 
           {/* Barrier mini indicators */}
           <div className="flex items-center gap-0.5 ml-0.5">
             {[1, 2, 3, 4, 5].map((idx) => (
               <div
                 key={idx}
-                className={`w-1 h-2 rounded-xs transition-all ${
+                className={`w-0.5 sm:w-1 h-2 rounded-xs transition-all ${
                   idx <= player.barrier
                     ? 'bg-gradient-to-t from-rose-500 to-amber-300'
                     : 'bg-stone-800 border border-stone-700/40 opacity-30'
@@ -117,7 +117,7 @@ export const PlayerHUD: React.FC<PlayerHUDProps> = ({
         {/* Archive Button */}
         <button
           onClick={onOpenArchive}
-          className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-stone-900 hover:bg-stone-800 border border-stone-800 hover:border-amber-400/80 text-stone-300 font-mono text-[8px] sm:text-[9px] transition-colors"
+          className="flex items-center gap-0.5 px-1 sm:px-1.5 py-0.5 rounded bg-stone-900 hover:bg-stone-800 border border-stone-800 hover:border-amber-400/80 text-stone-300 font-mono text-[8px] sm:text-[9px] transition-colors"
           title="アーカイブを確認"
         >
           <BookOpen className="w-2.5 h-2.5 text-stone-400" />
@@ -125,17 +125,17 @@ export const PlayerHUD: React.FC<PlayerHUDProps> = ({
         </button>
       </div>
 
-      {/* Center: Domain & Runes (Only shown when relevant) */}
+      {/* Center: Domain & Runes */}
       <div className="flex items-center gap-1 sm:gap-1.5 overflow-hidden">
         {/* Domain (Only rendered if present) */}
         {player.domain && (
           <div
             onClick={() => onInspectCard && onInspectCard(player.domain!.baseCard)}
-            className="flex items-center gap-1 px-1.5 py-0.5 bg-indigo-950/90 border border-indigo-500 rounded-md cursor-pointer hover:border-indigo-300 shadow-xs transition-all"
+            className="flex items-center gap-0.5 sm:gap-1 px-1 sm:px-1.5 py-0.5 bg-indigo-950/90 border border-indigo-500 rounded-md cursor-pointer hover:border-indigo-300 shadow-xs transition-all"
             title={`ドメイン: ${player.domain.baseCard.name}`}
           >
             <Layers className="w-2 h-2 text-indigo-400 shrink-0" />
-            <span className="text-[8px] sm:text-[9px] font-bold text-indigo-200 truncate max-w-[55px] sm:max-w-[85px]">
+            <span className="text-[8px] sm:text-[9px] font-bold text-indigo-200 truncate max-w-[50px] sm:max-w-[85px]">
               {player.domain.baseCard.name}
             </span>
           </div>
@@ -177,7 +177,7 @@ export const PlayerHUD: React.FC<PlayerHUDProps> = ({
                 title={`セット中ルーン: ${rune.baseCard.name}`}
               >
                 <Zap className="w-2 h-2 text-purple-400 shrink-0" />
-                <span className="truncate max-w-[45px] sm:max-w-[70px]">{rune.baseCard.name}</span>
+                <span className="truncate max-w-[40px] sm:max-w-[70px]">{rune.baseCard.name}</span>
               </div>
             );
           })}
@@ -189,7 +189,7 @@ export const PlayerHUD: React.FC<PlayerHUDProps> = ({
         <button
           data-dropzone={!isOpponent ? 'ARCANA_ZONE' : undefined}
           onClick={onOpenArcana}
-          className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full border text-[9px] sm:text-[10px] font-bold transition-all ${
+          className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full border text-[8px] sm:text-[10px] font-bold transition-all ${
             canPlaceArcana && !isOpponent
               ? 'bg-amber-950 border-amber-400 ring-2 ring-amber-400 text-amber-200 animate-pulse-ring'
               : isHoveredDropZone && !isOpponent
