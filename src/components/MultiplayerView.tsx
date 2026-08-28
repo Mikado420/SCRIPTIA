@@ -38,6 +38,13 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({ customDecks, h
 
     newClient.setCallbacks({
       onConnectionChange: (connStatus) => {
+        console.log('[ONLINE DIAGNOSTIC]', {
+          serverUrl: newClient.serverUrl,
+          healthStatus: 'checked',
+          healthSuccess: connStatus === 'ONLINE',
+          onConnectionChange: true,
+          connectionStatus: connStatus
+        });
         console.log('[ONLINE DEBUG] (MultiplayerView received state)', {
           status: connStatus,
           timestamp: new Date().toISOString(),
