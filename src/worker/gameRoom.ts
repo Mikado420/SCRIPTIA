@@ -179,7 +179,7 @@ export class GameRoom {
           name: 'Player 2',
         };
 
-        this.broadcast({
+        this.send(ws, {
           type: 'room_joined',
           code: this.roomCode,
         });
@@ -190,6 +190,17 @@ export class GameRoom {
     if (msg.type === 'player_ready') {
       const deckCards = msg.deckCards;
       
+      let detectedRole = 'UNKNOWN';
+      if (this.playerA && this.playerA.connectionId === connectionId) detectedRole = 'PLAYER_A';
+      else if (this.playerB && this.playerB.connectionId === connectionId) detectedRole = 'PLAYER_B';
+
+      console.log('[ONLINE READY DEBUG] SERVER RECEIVE', {
+        connectionId,
+        detectedRole,
+        deckLength: Array.isArray(deckCards) ? deckCards.length : -1,
+        firstCardIds: Array.isArray(deckCards) ? deckCards.slice(0, 10) : []
+      });
+
       if (!Array.isArray(deckCards)) {
         this.send(ws, { type: 'error', message: 'デッキデータが不正です (配列ではありません)。' });
         return;
@@ -204,7 +215,7 @@ export class GameRoom {
           return;
         }
         try {
-          getCardById(cardId);
+          const c = getCardById(cardId); if (c.cardId !== cardId) console.log("ID MISMATCH", cardId, c.cardId);
         } catch (err) {
           this.send(ws, { type: 'error', message: `デッキデータが不正です (存在しないカード: ${cardId})。` });
           return;
@@ -223,6 +234,18 @@ export class GameRoom {
         this.send(ws, { type: 'error', message: 'プレイヤーが登録されていません。' });
         return;
       }
+
+      console.log('[ONLINE READY DEBUG] SERVER STATE', {
+        playerAReady: !!this.playerA?.ready,
+        playerBReady: !!this.playerB?.ready,
+        playerADeckLength: this.playerA?.deckCards?.length || 0,
+        playerBDeckLength: this.playerB?.deckCards?.length || 0
+      });
+
+      console.log('[ONLINE READY DEBUG] SERVER BROADCAST', {
+        hostReady: !!this.playerA?.ready,
+        guestReady: !!this.playerB?.ready,
+      });
 
       this.broadcast({
         type: 'player_ready_state',

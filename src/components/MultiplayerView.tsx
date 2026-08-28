@@ -64,6 +64,8 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({ customDecks, h
         setError('');
       },
       onPlayerReadyState: (hReady, gReady) => {
+        console.log('[ONLINE READY DEBUG] CLIENT RECEIVE', { hostReady: hReady, guestReady: gReady });
+        console.log('[ONLINE READY DEBUG] REACT RECEIVE', { hostReady: hReady, guestReady: gReady, isHost });
         setHostReady(hReady);
         setGuestReady(gReady);
       },
@@ -117,6 +119,12 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({ customDecks, h
   const handleReady = () => {
     const deck = allDecks.find(d => d.deckId === selectedDeckId);
     if (deck) {
+      console.log('[ONLINE READY DEBUG] CLIENT SEND', {
+        role: isHost ? 'PLAYER_A' : 'PLAYER_B',
+        roomCode,
+        deckLength: deck.cards.length,
+        firstCardIds: deck.cards.slice(0, 10)
+      });
       client?.setReady(roomCode, deck.cards);
     }
   };
@@ -136,6 +144,17 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({ customDecks, h
         onNavigateTab={onNavigateTab}
       />
     );
+  }
+
+  const isButtonDisabled = (isHost && hostReady) || (!isHost && guestReady);
+  
+  if (status === 'IN_ROOM') {
+    console.log('[ONLINE READY DEBUG] BUTTON', {
+      isHost,
+      hostReady,
+      guestReady,
+      disabled: isButtonDisabled
+    });
   }
 
   return (
@@ -247,7 +266,7 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({ customDecks, h
 
             <button
               onClick={handleReady}
-              disabled={(isHost && hostReady) || (!isHost && guestReady)}
+              disabled={isButtonDisabled}
               className="w-full py-3 bg-amber-600 hover:bg-amber-500 disabled:bg-stone-700 disabled:text-stone-500 text-stone-950 font-black rounded-lg shadow-md transition-colors flex items-center justify-center gap-2"
             >
               <Play className="w-4 h-4" />

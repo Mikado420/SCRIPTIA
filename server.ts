@@ -263,7 +263,7 @@ wss.on('connection', (ws: WebSocket, req) => {
           return sendMsg(ws, { type: 'room_joined', code: targetCode });
         } else {
           room.playerB = { connectionId, ws, role: 'PLAYER_B', ready: false, deckCards: null };
-          return broadcastRoom(room, { type: 'room_joined', code: targetCode });
+          return sendMsg(ws, { type: 'room_joined', code: targetCode });
         }
       }
 
@@ -272,6 +272,17 @@ wss.on('connection', (ws: WebSocket, req) => {
         if (!room) return sendMsg(ws, { type: 'error', message: 'ルームが存在しません。' });
 
         const deckCards = msg.deckCards;
+        let detectedRole = 'UNKNOWN';
+        if (room.playerA && room.playerA.connectionId === connectionId) detectedRole = 'PLAYER_A';
+        else if (room.playerB && room.playerB.connectionId === connectionId) detectedRole = 'PLAYER_B';
+
+        console.log('[ONLINE READY DEBUG] SERVER RECEIVE', {
+          connectionId,
+          detectedRole,
+          deckLength: Array.isArray(deckCards) ? deckCards.length : -1,
+          firstCardIds: Array.isArray(deckCards) ? deckCards.slice(0, 10) : []
+        });
+
         if (!Array.isArray(deckCards)) {
           return sendMsg(ws, { type: 'error', message: 'デッキデータが不正です (配列ではありません)。' });
         }
@@ -283,7 +294,7 @@ wss.on('connection', (ws: WebSocket, req) => {
             return sendMsg(ws, { type: 'error', message: 'デッキデータが不正です (空のIDが含まれています)。' });
           }
           try {
-            getCardById(cardId);
+            const c = getCardById(cardId); if (c.cardId !== cardId) console.log("ID MISMATCH", cardId, c.cardId);
           } catch (err) {
             return sendMsg(ws, { type: 'error', message: `デッキデータが不正です (存在しないカード: ${cardId})。` });
           }
@@ -298,6 +309,18 @@ wss.on('connection', (ws: WebSocket, req) => {
         } else {
           return sendMsg(ws, { type: 'error', message: '未登録のプレイヤーです。' });
         }
+
+        console.log('[ONLINE READY DEBUG] SERVER STATE', {
+          playerAReady: !!room.playerA?.ready,
+          playerBReady: !!room.playerB?.ready,
+          playerADeckLength: room.playerA?.deckCards?.length || 0,
+          playerBDeckLength: room.playerB?.deckCards?.length || 0
+        });
+
+        console.log('[ONLINE READY DEBUG] SERVER BROADCAST', {
+          hostReady: !!room.playerA?.ready,
+          guestReady: !!room.playerB?.ready,
+        });
 
         broadcastRoom(room, {
           type: 'player_ready_state',
