@@ -30,12 +30,9 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({ customDecks, h
   const [connectionStatus, setConnectionStatus] = useState<'CONNECTING' | 'ONLINE' | 'OFFLINE'>('CONNECTING');
 
   useEffect(() => {
-    // Determine server URL dynamically: prefer env, default to production Cloudflare Worker
+    // Determine server URL dynamically: prefer env, fallback to worker
     const envUrl = import.meta.env.VITE_ONLINE_SERVER_URL;
-    let serverUrl = DEFAULT_WORKER_URL;
-    if (envUrl) {
-      serverUrl = envUrl;
-    }
+    const serverUrl = envUrl || DEFAULT_WORKER_URL;
 
     const newClient = new MultiplayerClient(serverUrl);
 

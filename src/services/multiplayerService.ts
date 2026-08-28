@@ -16,7 +16,11 @@ export interface MultiplayerCallbacks {
 /**
  * Minimal direct health check function (independent from WebSocket / GameEngine)
  */
-export async function checkDirectHealth(serverUrl: string = DEFAULT_WORKER_URL): Promise<{ ok: boolean; status: number; data: any }> {
+export function getDefaultServerUrl(): string {
+  return DEFAULT_WORKER_URL;
+}
+
+export async function checkDirectHealth(serverUrl: string = getDefaultServerUrl()): Promise<{ ok: boolean; status: number; data: any }> {
   let httpBase = serverUrl.trim();
   if (httpBase.startsWith('ws://')) httpBase = httpBase.replace('ws://', 'http://');
   if (httpBase.startsWith('wss://')) httpBase = httpBase.replace('wss://', 'https://');
@@ -61,8 +65,9 @@ export class MultiplayerClient {
 
   constructor(serverUrl?: string) {
     const envUrl = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_ONLINE_SERVER_URL : undefined;
-    const resolvedUrl = (serverUrl || envUrl || DEFAULT_WORKER_URL).trim();
-    this.serverUrl = resolvedUrl || DEFAULT_WORKER_URL;
+    const defaultUrl = getDefaultServerUrl();
+    const resolvedUrl = (serverUrl || envUrl || defaultUrl).trim();
+    this.serverUrl = resolvedUrl || defaultUrl;
     console.log('[Multiplayer] Server URL:', this.serverUrl);
     console.log('[ONLINE DEBUG]', {
       status: 'CONNECTING',
@@ -82,6 +87,7 @@ export class MultiplayerClient {
   }
 
   private updateServerStatus(status: 'CONNECTING' | 'ONLINE' | 'OFFLINE', reason: string) {
+    if (this.isExplicitlyClosed && status !== 'OFFLINE') return;
     this.serverStatus = status;
     console.log('[ONLINE DEBUG]', {
       status,
@@ -92,6 +98,8 @@ export class MultiplayerClient {
   }
 
   public async checkHealth(): Promise<boolean> {
+    if (this.isExplicitlyClosed) return false;
+
     const httpBase = this.getHttpBaseUrl();
     const healthUrl = `${httpBase}/api/health`;
     console.log('[SCRIPTIA ONLINE TEST] URL:', healthUrl);
@@ -110,17 +118,23 @@ export class MultiplayerClient {
         console.log('[SCRIPTIA ONLINE TEST] BODY:', data);
         if (data && (data.status === 'ok' || data.service)) {
           console.log('[SCRIPTIA ONLINE TEST] RESULT: ONLINE');
-          this.updateServerStatus('ONLINE', 'health_success');
+          if (!this.isExplicitlyClosed) {
+            this.updateServerStatus('ONLINE', 'health_success');
+          }
           return true;
         }
       }
 
       console.error('[SCRIPTIA ONLINE TEST] RESULT: OFFLINE (invalid status or payload)');
-      this.updateServerStatus('OFFLINE', 'health_failure');
+      if (!this.isExplicitlyClosed) {
+        this.updateServerStatus('OFFLINE', 'health_failure');
+      }
       return false;
     } catch (err) {
       console.error('[SCRIPTIA ONLINE TEST] RESULT: OFFLINE', err);
-      this.updateServerStatus('OFFLINE', 'health_failure');
+      if (!this.isExplicitlyClosed) {
+        this.updateServerStatus('OFFLINE', 'health_failure');
+      }
       return false;
     }
   }
