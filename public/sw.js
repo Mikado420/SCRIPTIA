@@ -1,5 +1,5 @@
 // Service Worker for TCG Simulator PWA
-const CACHE_VERSION = 'v2.3.0';
+const CACHE_VERSION = 'v2.3.1';
 const STATIC_CACHE_NAME = `tcg-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE_NAME = `tcg-runtime-${CACHE_VERSION}`;
 

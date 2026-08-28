@@ -30,6 +30,11 @@ export class MultiplayerClient {
     const resolvedUrl = (serverUrl || envUrl || DEFAULT_WORKER_URL).trim();
     this.serverUrl = resolvedUrl || DEFAULT_WORKER_URL;
     console.log('[Multiplayer] Server URL:', this.serverUrl);
+    console.log('[ONLINE DEBUG]', {
+      status: 'CONNECTING',
+      reason: 'initial',
+      timestamp: new Date().toISOString(),
+    });
   }
 
   private getHttpBaseUrl(): string {
@@ -42,8 +47,13 @@ export class MultiplayerClient {
     return url.replace(/\/$/, '');
   }
 
-  private updateServerStatus(status: 'CONNECTING' | 'ONLINE' | 'OFFLINE') {
+  private updateServerStatus(status: 'CONNECTING' | 'ONLINE' | 'OFFLINE', reason: string) {
     this.serverStatus = status;
+    console.log('[ONLINE DEBUG]', {
+      status,
+      reason,
+      timestamp: new Date().toISOString(),
+    });
     this.callbacks.onConnectionChange?.(this.serverStatus);
   }
 
@@ -53,7 +63,7 @@ export class MultiplayerClient {
     console.log('[Multiplayer] Health check started:', healthUrl);
 
     try {
-      this.updateServerStatus('CONNECTING');
+      this.updateServerStatus('CONNECTING', 'health_start');
       const response = await fetch(healthUrl, {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
@@ -69,17 +79,17 @@ export class MultiplayerClient {
         const data: any = await response.json().catch(() => null);
         if (data && (data.status === 'ok' || data.service)) {
           console.log('[Multiplayer] Cloudflare Worker ONLINE');
-          this.updateServerStatus('ONLINE');
+          this.updateServerStatus('ONLINE', 'health_success');
           return true;
         }
       }
 
       console.warn('[Multiplayer] Cloudflare Worker OFFLINE (invalid status or payload)');
-      this.updateServerStatus('OFFLINE');
+      this.updateServerStatus('OFFLINE', 'health_failure');
       return false;
     } catch (err) {
       console.warn('[Multiplayer] Cloudflare Worker OFFLINE:', err);
-      this.updateServerStatus('OFFLINE');
+      this.updateServerStatus('OFFLINE', 'health_failure');
       return false;
     }
   }
@@ -154,7 +164,7 @@ export class MultiplayerClient {
       this.ws.onopen = () => {
         console.log('[Multiplayer] WebSocket OPEN');
         this.socketStatus = 'CONNECTED';
-        this.updateServerStatus('ONLINE');
+        this.updateServerStatus('ONLINE', 'websocket_open');
         this.startPing();
         if (onOpenAction) {
           onOpenAction();
@@ -164,10 +174,15 @@ export class MultiplayerClient {
       this.ws.onclose = () => {
         console.log('[Multiplayer] WebSocket CLOSED');
         this.socketStatus = 'DISCONNECTED';
+        console.log('[ONLINE DEBUG]', {
+          status: this.serverStatus,
+          reason: 'websocket_close',
+          timestamp: new Date().toISOString(),
+        });
         this.stopPing();
 
         if (!this.isExplicitlyClosed) {
-          // Trigger health check to verify overall server reachability
+          // Trigger health check to verify overall server reachability without blindly assuming offline
           this.checkHealth();
 
           // Auto retry connection after 3s if inside active room
@@ -182,6 +197,11 @@ export class MultiplayerClient {
       this.ws.onerror = (e) => {
         console.warn('[Multiplayer] WebSocket ERROR:', e);
         this.socketStatus = 'DISCONNECTED';
+        console.log('[ONLINE DEBUG]', {
+          status: this.serverStatus,
+          reason: 'websocket_error',
+          timestamp: new Date().toISOString(),
+        });
         this.callbacks.onError?.('通信エラーが発生しました。');
       };
 

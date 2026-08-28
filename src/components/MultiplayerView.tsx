@@ -50,6 +50,10 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({ customDecks, h
 
     client.setCallbacks({
       onConnectionChange: (connStatus) => {
+        console.log('[ONLINE DEBUG] (MultiplayerView received state)', {
+          status: connStatus,
+          timestamp: new Date().toISOString(),
+        });
         setConnectionStatus(connStatus);
       },
       onRoomCreated: (code) => {
