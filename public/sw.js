@@ -1,5 +1,5 @@
 // Service Worker for TCG Simulator PWA
-const CACHE_VERSION = 'v2.3.3';
+const CACHE_VERSION = 'v2.3.4';
 const STATIC_CACHE_NAME = `tcg-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE_NAME = `tcg-runtime-${CACHE_VERSION}`;
 
@@ -75,20 +75,16 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Stale-while-revalidate for local static assets
+  // Network-First for local static assets
   event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      const fetchPromise = fetch(request)
-        .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            const copy = networkResponse.clone();
-            caches.open(RUNTIME_CACHE_NAME).then((cache) => cache.put(request, copy));
-          }
-          return networkResponse;
-        })
-        .catch(() => cachedResponse);
-
-      return cachedResponse || fetchPromise;
-    })
+    fetch(request)
+      .then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const copy = networkResponse.clone();
+          caches.open(RUNTIME_CACHE_NAME).then((cache) => cache.put(request, copy));
+        }
+        return networkResponse;
+      })
+      .catch(() => caches.match(request))
   );
 });
