@@ -52,17 +52,34 @@ export const App: React.FC = () => {
 
   // Check backend health & API key status
   useEffect(() => {
-    fetch('/api/health')
-      .then((r) => r.json())
-      .then((data: any) => {
-        if (data && data.hasApiKey) {
-          setHasApiKey(true);
+    const checkApiHealth = async () => {
+      try {
+        const localRes = await fetch('/api/health');
+        if (localRes.ok) {
+          const data: any = await localRes.json();
+          if (data && data.hasApiKey) {
+            setHasApiKey(true);
+            return;
+          }
         }
-      })
-      .catch(() => {
-        // Offline / GitHub Pages fallback
+      } catch {
+        // Fallback to Cloudflare Worker
+      }
+
+      try {
+        const cfRes = await fetch('https://scriptia.mikadoo420.workers.dev/api/health');
+        if (cfRes.ok) {
+          const data: any = await cfRes.json();
+          if (data && data.hasApiKey) {
+            setHasApiKey(true);
+          }
+        }
+      } catch {
         console.log('Health check skipped (running in offline/static client mode)');
-      });
+      }
+    };
+
+    checkApiHealth();
   }, []);
 
   // Save or update custom deck strictly by deckId

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MultiplayerClient } from '../services/multiplayerService';
+import { DEFAULT_WORKER_URL, MultiplayerClient } from '../services/multiplayerService';
 import { Deck, GameState, PlayerId, Action } from '../types/game';
 import { GameBoard } from './GameBoard';
 import { Globe, Users, Play, AlertCircle } from 'lucide-react';
@@ -30,14 +30,11 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({ customDecks, h
   const [connectionStatus, setConnectionStatus] = useState<'CONNECTING' | 'ONLINE' | 'OFFLINE'>('CONNECTING');
 
   useEffect(() => {
-    // Determine server URL dynamically
+    // Determine server URL dynamically: prefer env, default to production Cloudflare Worker
     const envUrl = import.meta.env.VITE_ONLINE_SERVER_URL;
-    let serverUrl = '/';
+    let serverUrl = DEFAULT_WORKER_URL;
     if (envUrl) {
       serverUrl = envUrl;
-    } else if (window.location.hostname === 'localhost' || window.location.hostname.includes('run.app')) {
-      // In dev or AI studio preview, the backend is on the same origin
-      serverUrl = window.location.origin;
     }
 
     const newClient = new MultiplayerClient(serverUrl);

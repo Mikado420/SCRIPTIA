@@ -13,17 +13,20 @@ const ALLOWED_ORIGINS = [
 function isOriginAllowed(origin: string | null): boolean {
   if (!origin) return true;
   if (ALLOWED_ORIGINS.includes(origin)) return true;
-  if (origin.endsWith('.run.app') && origin.startsWith('https://ais-')) return true;
-  return false;
+  if (origin.includes('github.io')) return true;
+  if (origin.endsWith('.run.app')) return true;
+  if (origin.includes('localhost') || origin.includes('127.0.0.1')) return true;
+  if (origin.includes('workers.dev')) return true;
+  return true; // Allow client requests across origins
 }
 
 function getCorsHeaders(request: Request): HeadersInit {
   const origin = request.headers.get('Origin');
-  const allowed = isOriginAllowed(origin) ? (origin || '*') : ALLOWED_ORIGINS[0];
+  const allowed = origin || '*';
   return {
     'Access-Control-Allow-Origin': allowed,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
     'Access-Control-Allow-Credentials': 'true',
   };
 }

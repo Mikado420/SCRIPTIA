@@ -8,6 +8,7 @@ import {
 } from '../types/game';
 import { AIEvaluator } from '../engine/aiEvaluator';
 import { GameEngine } from '../engine/gameEngine';
+import { DEFAULT_WORKER_URL } from './multiplayerService';
 
 export class AIService {
   private engine: GameEngine;
@@ -16,6 +17,27 @@ export class AIService {
   constructor(engine: GameEngine) {
     this.engine = engine;
     this.evaluator = new AIEvaluator(engine);
+  }
+
+  private async fetchAiEndpoint(endpoint: string, body: any): Promise<Response> {
+    try {
+      const localRes = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (localRes.ok) return localRes;
+    } catch {
+      // Fallback
+    }
+
+    // Fallback to Cloudflare Worker
+    const workerEndpoint = `${DEFAULT_WORKER_URL}${endpoint}`;
+    return fetch(workerEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
   }
 
   public async getDecision(
@@ -31,10 +53,10 @@ export class AIService {
     const visibleState = this.evaluator.extractVisibleState(state, aiPlayerId, legalActions);
 
     try {
-      const response = await fetch('/api/ai/decision', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ visibleState, legalActions, aiPlayerId }),
+      const response = await this.fetchAiEndpoint('/api/ai/decision', {
+        visibleState,
+        legalActions,
+        aiPlayerId,
       });
 
       if (!response.ok) {
@@ -94,11 +116,7 @@ export class AIService {
     const visibleState = this.evaluator.extractVisibleState(state, aiPlayerId, legal);
 
     try {
-      const response = await fetch('/api/ai/explain', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ visibleState }),
-      });
+      const response = await this.fetchAiEndpoint('/api/ai/explain', { visibleState });
       const data: any = await response.json();
       return data.analysis || '戦況分析を取得できませんでした。';
     } catch {
@@ -108,11 +126,7 @@ export class AIService {
 
   public async analyzeMatchSummary(summary: any): Promise<string> {
     try {
-      const response = await fetch('/api/ai/analyze-match', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ matchSummary: summary }),
-      });
+      const response = await this.fetchAiEndpoint('/api/ai/analyze-match', { matchSummary: summary });
       const data: any = await response.json();
       return data.review || '対戦総括を取得できませんでした。';
     } catch {

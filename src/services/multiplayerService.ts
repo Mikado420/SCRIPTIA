@@ -1,5 +1,7 @@
 import { GameState, Action, PlayerId } from '../types/game';
 
+export const DEFAULT_WORKER_URL = 'https://scriptia.mikadoo420.workers.dev';
+
 export interface MultiplayerCallbacks {
   onStateUpdate?: (state: GameState, log?: any) => void;
   onGameStarted?: (playerId: PlayerId, state: GameState) => void;
@@ -19,10 +21,66 @@ export class MultiplayerClient {
   private isExplicitlyClosed = false;
   private reconnectTimer: any = null;
   private pingInterval: any = null;
+  private healthCheckTimer: any = null;
+  private lastHealthStatus: 'CONNECTING' | 'ONLINE' | 'OFFLINE' = 'CONNECTING';
 
-  constructor(serverUrl: string) {
-    this.serverUrl = serverUrl;
-    this.connect();
+  constructor(serverUrl: string = DEFAULT_WORKER_URL) {
+    this.serverUrl = serverUrl || DEFAULT_WORKER_URL;
+    this.checkHealth();
+    this.startHealthCheckLoop();
+  }
+
+  private getHttpBaseUrl(): string {
+    let url = this.serverUrl;
+    if (url.startsWith('ws://')) {
+      url = url.replace('ws://', 'http://');
+    } else if (url.startsWith('wss://')) {
+      url = url.replace('wss://', 'https://');
+    }
+    return url.replace(/\/$/, '');
+  }
+
+  public async checkHealth(): Promise<boolean> {
+    const httpBase = this.getHttpBaseUrl();
+    try {
+      this.callbacks.onConnectionChange?.('CONNECTING');
+      const response = await fetch(`${httpBase}/api/health`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      });
+      if (response.ok) {
+        const data: any = await response.json().catch(() => null);
+        if (data && (data.status === 'ok' || data.service)) {
+          this.lastHealthStatus = 'ONLINE';
+          this.callbacks.onConnectionChange?.('ONLINE');
+          return true;
+        }
+      }
+      this.lastHealthStatus = 'OFFLINE';
+      this.callbacks.onConnectionChange?.('OFFLINE');
+      return false;
+    } catch (err) {
+      console.warn('Health check failed for Cloudflare Worker:', err);
+      this.lastHealthStatus = 'OFFLINE';
+      this.callbacks.onConnectionChange?.('OFFLINE');
+      return false;
+    }
+  }
+
+  private startHealthCheckLoop() {
+    this.stopHealthCheckLoop();
+    this.healthCheckTimer = setInterval(() => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        this.checkHealth();
+      }
+    }, 15000);
+  }
+
+  private stopHealthCheckLoop() {
+    if (this.healthCheckTimer) {
+      clearInterval(this.healthCheckTimer);
+      this.healthCheckTimer = null;
+    }
   }
 
   private resolveWsUrl(url: string, roomCode?: string): string {
@@ -52,16 +110,20 @@ export class MultiplayerClient {
     }
   }
 
-  public connect(roomCode?: string) {
+  public connect(roomCode: string, onOpenAction?: () => void) {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
 
-    if (roomCode) {
-      this.currentRoomCode = roomCode;
+    if (this.ws) {
+      try {
+        this.ws.close();
+      } catch {}
+      this.ws = null;
     }
 
+    this.currentRoomCode = roomCode;
     const wsEndpoint = this.resolveWsUrl(this.serverUrl, this.currentRoomCode);
 
     try {
@@ -71,16 +133,21 @@ export class MultiplayerClient {
       this.ws.onopen = () => {
         this.callbacks.onConnectionChange?.('ONLINE');
         this.startPing();
+        if (onOpenAction) {
+          onOpenAction();
+        }
       };
 
       this.ws.onclose = () => {
         this.stopPing();
         this.callbacks.onConnectionChange?.('OFFLINE');
         if (!this.isExplicitlyClosed) {
-          // Auto retry connection after 3s
-          this.reconnectTimer = setTimeout(() => {
-            this.connect(this.currentRoomCode);
-          }, 3000);
+          // Auto retry connection after 3s if in room
+          if (this.currentRoomCode) {
+            this.reconnectTimer = setTimeout(() => {
+              this.connect(this.currentRoomCode);
+            }, 3000);
+          }
         }
       };
 
@@ -139,7 +206,7 @@ export class MultiplayerClient {
         this.callbacks.onStateUpdate?.(msg.state, msg.log);
         break;
       case 'error':
-        this.callbacks.onError?.(msg.message || 'Error occurred');
+        this.callbacks.onError?.(msg.message || 'エラーが発生しました');
         break;
       case 'opponent_disconnected':
         this.callbacks.onOpponentDisconnected?.();
@@ -153,6 +220,9 @@ export class MultiplayerClient {
 
   public setCallbacks(callbacks: MultiplayerCallbacks) {
     this.callbacks = { ...this.callbacks, ...callbacks };
+    if (this.lastHealthStatus) {
+      this.callbacks.onConnectionChange?.(this.lastHealthStatus);
+    }
   }
 
   private send(data: any) {
@@ -164,34 +234,25 @@ export class MultiplayerClient {
   }
 
   public createRoom() {
-    // If not connected to a room specific DO, we can reconnect with room code or send create_room
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
     this.currentRoomCode = code;
-    this.connect(code);
 
-    // Wait until connection opens then send create_room
-    const sendCreate = () => {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.send({ type: 'create_room', version: '2.3' });
-      } else {
-        setTimeout(sendCreate, 50);
-      }
-    };
-    sendCreate();
+    this.connect(code, () => {
+      this.send({ type: 'create_room', version: '2.3' });
+    });
   }
 
   public joinRoom(code: string) {
-    this.currentRoomCode = code;
-    this.connect(code);
+    const cleanCode = code.trim().toUpperCase();
+    this.currentRoomCode = cleanCode;
 
-    const sendJoin = () => {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.send({ type: 'join_room', code, version: '2.3' });
-      } else {
-        setTimeout(sendJoin, 50);
-      }
-    };
-    sendJoin();
+    this.connect(cleanCode, () => {
+      this.send({ type: 'join_room', code: cleanCode, version: '2.3' });
+    });
   }
 
   public setReady(code: string, deckCards: any[]) {
@@ -205,12 +266,15 @@ export class MultiplayerClient {
   public disconnect() {
     this.isExplicitlyClosed = true;
     this.stopPing();
+    this.stopHealthCheckLoop();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
     if (this.ws) {
-      this.ws.close();
+      try {
+        this.ws.close();
+      } catch {}
       this.ws = null;
     }
   }
