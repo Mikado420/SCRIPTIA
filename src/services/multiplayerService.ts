@@ -6,8 +6,8 @@ export interface MultiplayerCallbacks {
   onStateUpdate?: (state: GameState, log?: any) => void;
   onGameStarted?: (playerId: PlayerId, state: GameState) => void;
   onError?: (err: string) => void;
-  onRoomCreated?: (code: string) => void;
-  onRoomJoined?: (code: string) => void;
+  onRoomCreated?: (code: string, playerId?: PlayerId) => void;
+  onRoomJoined?: (code: string, playerId?: PlayerId) => void;
   onPlayerReadyState?: (hostReady: boolean, guestReady: boolean) => void;
   onOpponentDisconnected?: () => void;
   onConnectionChange?: (status: 'CONNECTING' | 'ONLINE' | 'OFFLINE') => void;
@@ -285,11 +285,11 @@ export class MultiplayerClient {
     switch (msg.type) {
       case 'room_created':
         this.currentRoomCode = msg.code;
-        this.callbacks.onRoomCreated?.(msg.code);
+        this.callbacks.onRoomCreated?.(msg.code, msg.playerId);
         break;
       case 'room_joined':
         this.currentRoomCode = msg.code;
-        this.callbacks.onRoomJoined?.(msg.code);
+        this.callbacks.onRoomJoined?.(msg.code, msg.playerId);
         break;
       case 'player_ready_state':
         this.callbacks.onPlayerReadyState?.(msg.hostReady, msg.guestReady);
@@ -373,6 +373,10 @@ export class MultiplayerClient {
 
   public setReady(code: string, deckCards: any[]) {
     this.send({ type: 'player_ready', code, deckCards });
+  }
+
+  public setUnready(code: string) {
+    this.send({ type: 'player_unready', code });
   }
 
   public sendAction(code: string, action: Action) {

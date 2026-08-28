@@ -51,17 +51,25 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({ customDecks, h
         });
         setConnectionStatus(connStatus);
       },
-      onRoomCreated: (code) => {
+      onRoomCreated: (code, playerId) => {
         setRoomCode(code);
         setStatus('IN_ROOM');
-        setIsHost(true);
+        if (playerId) {
+          setIsHost(playerId === 'PLAYER_A');
+          setMyPlayerId(playerId);
+        }
         setError('');
       },
-      onRoomJoined: (code) => {
-        setRoomCode(code);
-        setStatus('IN_ROOM');
-        setIsHost(false);
-        setError('');
+      onRoomJoined: (code, playerId) => {
+        if (status !== 'IN_ROOM') {
+          setRoomCode(code);
+          setStatus('IN_ROOM');
+          setError('');
+        }
+        if (playerId) {
+          setIsHost(playerId === 'PLAYER_A');
+          setMyPlayerId(playerId);
+        }
       },
       onPlayerReadyState: (hReady, gReady) => {
         console.log('[ONLINE READY DEBUG] CLIENT RECEIVE', { hostReady: hReady, guestReady: gReady });
@@ -146,7 +154,17 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({ customDecks, h
     );
   }
 
-  const isButtonDisabled = (isHost && hostReady) || (!isHost && guestReady);
+  const myReady = isHost ? hostReady : guestReady;
+  const opponentReady = isHost ? guestReady : hostReady;
+
+  const handleDeckChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedDeckId(e.target.value);
+    if (roomCode && client) {
+      client.setUnready(roomCode);
+    }
+  };
+
+  const isButtonDisabled = myReady;
   
   if (status === 'IN_ROOM') {
     console.log('[ONLINE READY DEBUG] BUTTON', {
@@ -251,15 +269,15 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({ customDecks, h
 
             <div className="flex flex-col gap-3 pt-4 border-t border-stone-800">
               <div className="flex items-center justify-between px-2">
-                <span className="text-sm">{isHost ? '自分 (Host)' : '自分 (Guest)'}</span>
-                <span className={`text-xs font-bold px-2 py-1 rounded ${isHost ? (hostReady ? 'bg-emerald-900 text-emerald-300' : 'bg-stone-800 text-stone-400') : (guestReady ? 'bg-emerald-900 text-emerald-300' : 'bg-stone-800 text-stone-400')}`}>
-                  {isHost ? (hostReady ? '準備完了' : '準備中') : (guestReady ? '準備完了' : '準備中')}
+                <span className="text-sm">自分 ({isHost ? 'Host' : 'Guest'})</span>
+                <span className={`text-xs font-bold px-2 py-1 rounded ${myReady ? 'bg-emerald-900 text-emerald-300' : 'bg-stone-800 text-stone-400'}`}>
+                  {myReady ? '準備完了' : '準備中'}
                 </span>
               </div>
               <div className="flex items-center justify-between px-2">
-                <span className="text-sm">{isHost ? '相手 (Guest)' : '相手 (Host)'}</span>
-                <span className={`text-xs font-bold px-2 py-1 rounded ${isHost ? (guestReady ? 'bg-emerald-900 text-emerald-300' : 'bg-stone-800 text-stone-400') : (hostReady ? 'bg-emerald-900 text-emerald-300' : 'bg-stone-800 text-stone-400')}`}>
-                  {isHost ? (guestReady ? '準備完了' : '待機中') : (hostReady ? '準備完了' : '待機中')}
+                <span className="text-sm">相手 ({isHost ? 'Guest' : 'Host'})</span>
+                <span className={`text-xs font-bold px-2 py-1 rounded ${opponentReady ? 'bg-emerald-900 text-emerald-300' : 'bg-stone-800 text-stone-400'}`}>
+                  {opponentReady ? '準備完了' : '待機中'}
                 </span>
               </div>
             </div>

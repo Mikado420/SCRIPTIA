@@ -235,7 +235,7 @@ wss.on('connection', (ws: WebSocket, req) => {
           ready: false,
           deckCards: null,
         };
-        return sendMsg(ws, { type: 'room_created', code });
+        return sendMsg(ws, { type: 'room_created', code, playerId: 'PLAYER_A' });
       }
 
       if (msg.type === 'join_room') {
@@ -257,14 +257,35 @@ wss.on('connection', (ws: WebSocket, req) => {
 
         if (!room.playerA) {
           room.playerA = { connectionId, ws, role: 'PLAYER_A', ready: false, deckCards: null };
-          return sendMsg(ws, { type: 'room_created', code: targetCode });
+          return sendMsg(ws, { type: 'room_created', code: targetCode, playerId: 'PLAYER_A' });
         } else if (room.playerA.connectionId === connectionId) {
           room.playerA.ws = ws;
-          return sendMsg(ws, { type: 'room_joined', code: targetCode });
+          return sendMsg(ws, { type: 'room_joined', code: targetCode, playerId: 'PLAYER_A' });
         } else {
           room.playerB = { connectionId, ws, role: 'PLAYER_B', ready: false, deckCards: null };
-          return sendMsg(ws, { type: 'room_joined', code: targetCode });
+          return sendMsg(ws, { type: 'room_joined', code: targetCode, playerId: 'PLAYER_B' });
         }
+      }
+
+      if (msg.type === 'player_unready') {
+        const room = currentRoom || (msg.code ? rooms.get(msg.code.toUpperCase()) : null);
+        if (!room) return;
+        let changed = false;
+        if (room.playerA && room.playerA.connectionId === connectionId) {
+          room.playerA.ready = false;
+          changed = true;
+        } else if (room.playerB && room.playerB.connectionId === connectionId) {
+          room.playerB.ready = false;
+          changed = true;
+        }
+        if (changed) {
+          broadcastRoom(room, {
+            type: 'player_ready_state',
+            hostReady: !!room.playerA?.ready,
+            guestReady: !!room.playerB?.ready,
+          });
+        }
+        return;
       }
 
       if (msg.type === 'player_ready') {
@@ -329,6 +350,23 @@ wss.on('connection', (ws: WebSocket, req) => {
         });
 
         if (room.playerA?.ready && room.playerB?.ready && room.playerA.deckCards && room.playerB.deckCards && !room.gameState) {
+          console.log('[ONLINE CARD TRACE] ENGINE INPUT A:', room.playerA.deckCards.slice(0, 5));
+          console.log('[ONLINE CARD TRACE] ENGINE INPUT B:', room.playerB.deckCards.slice(0, 5));
+
+          for (const [playerId, deck] of [['PLAYER_A', room.playerA.deckCards], ['PLAYER_B', room.playerB.deckCards]] as const) {
+            if (deck.length !== 40) return console.error(`Validation Failed: ${playerId} deck length is ${deck.length}`);
+            for (let i = 0; i < deck.length; i++) {
+              const id = deck[i];
+              if (typeof id !== 'string' || !id || id.trim() === '') return console.error(`Validation Failed: ${playerId} invalid ID at index ${i}`);
+              try {
+                const card = getCardById(id);
+                if (card.cardId !== id) return console.error(`Validation Failed: requested ${id} but got ${card.cardId}`);
+              } catch (e) {
+                return console.error(`Validation Failed: unknown ID ${id}`);
+              }
+            }
+          }
+
           const seed = Date.now();
           room.engine = new GameEngine(seed);
           room.gameState = room.engine.createInitialState(
@@ -342,6 +380,16 @@ wss.on('connection', (ws: WebSocket, req) => {
             'HUMAN',
             'HUMAN'
           );
+
+          for (const [playerId, statePlayer] of [['PLAYER_A', room.gameState.playerA], ['PLAYER_B', room.gameState.playerB]] as const) {
+            const allCards = [...statePlayer.deck, ...statePlayer.hand, ...statePlayer.battlefield, ...statePlayer.runes, ...statePlayer.archive];
+            if (allCards.length !== 40) return console.error(`Post-Validation Failed: ${playerId} cards total ${allCards.length}`);
+            for (const card of allCards) {
+              if (card.cardId !== card.baseCard.cardId) return console.error(`Post-Validation Failed: cardId mismatch`);
+              if (card.cardId === 'undefined' || !card.cardId) return console.error(`Post-Validation Failed: undefined cardId`);
+            }
+          }
+          console.log('[ONLINE CARD TRACE] ENGINE OUTPUT A:', room.gameState.playerA.deck.slice(0, 5).map((c: any) => c.cardId));
 
           if (room.playerA?.ws) {
             sendMsg(room.playerA.ws, {
@@ -434,6 +482,8 @@ app.get('/api/health', (req, res) => {
     hasApiKey: !!process.env.GEMINI_API_KEY,
     rulesVersion: 'Version 0.03',
     cardPoolVersion: 'Ver.2.3',
+    protocolVersion: '2.3',
+    buildId: process.env.BUILD_ID || 'local'
   });
 });
 

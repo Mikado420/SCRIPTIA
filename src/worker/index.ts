@@ -74,6 +74,8 @@ export default {
           hasApiKey: !!env.GEMINI_API_KEY,
           rulesVersion: 'Version 0.03',
           cardPoolVersion: 'Ver.2.3',
+          protocolVersion: '2.3',
+          buildId: '1.0.1' // Provide a static or env injected buildId
         },
         request
       );

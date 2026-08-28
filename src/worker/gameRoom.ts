@@ -131,6 +131,7 @@ export class GameRoom {
       this.send(ws, {
         type: 'room_created',
         code: this.roomCode,
+        playerId: 'PLAYER_A'
       });
       return;
     }
@@ -163,11 +164,11 @@ export class GameRoom {
           deckCards: null,
           name: 'Player 1',
         };
-        this.send(ws, { type: 'room_created', code: this.roomCode });
+        this.send(ws, { type: 'room_created', code: this.roomCode, playerId: 'PLAYER_A' });
       } else if (this.playerA.connectionId === connectionId) {
         // Reconnection of Host
         this.playerA.ws = ws;
-        this.send(ws, { type: 'room_joined', code: this.roomCode });
+        this.send(ws, { type: 'room_joined', code: this.roomCode, playerId: 'PLAYER_A' });
       } else {
         // Second joiner becomes Guest (Player B)
         this.playerB = {
@@ -182,6 +183,26 @@ export class GameRoom {
         this.send(ws, {
           type: 'room_joined',
           code: this.roomCode,
+          playerId: 'PLAYER_B'
+        });
+      }
+      return;
+    }
+
+    if (msg.type === 'player_unready') {
+      let changed = false;
+      if (this.playerA && this.playerA.connectionId === connectionId) {
+        this.playerA.ready = false;
+        changed = true;
+      } else if (this.playerB && this.playerB.connectionId === connectionId) {
+        this.playerB.ready = false;
+        changed = true;
+      }
+      if (changed) {
+        this.broadcast({
+          type: 'player_ready_state',
+          hostReady: !!this.playerA?.ready,
+          guestReady: !!this.playerB?.ready,
         });
       }
       return;
@@ -300,6 +321,34 @@ export class GameRoom {
     const deckACardIds = this.playerA.deckCards;
     const deckBCardIds = this.playerB.deckCards;
 
+    // GameEngine Input Validation
+    console.log('[ONLINE CARD TRACE] ENGINE INPUT A:', deckACardIds.slice(0, 5));
+    console.log('[ONLINE CARD TRACE] ENGINE INPUT B:', deckBCardIds.slice(0, 5));
+
+    for (const [playerId, deck] of [['PLAYER_A', deckACardIds], ['PLAYER_B', deckBCardIds]] as const) {
+      if (deck.length !== 40) {
+        console.error(`Validation Failed: ${playerId} deck length is ${deck.length}`);
+        return;
+      }
+      for (let i = 0; i < deck.length; i++) {
+        const id = deck[i];
+        if (typeof id !== 'string' || !id || id.trim() === '') {
+          console.error(`Validation Failed: ${playerId} deck contains invalid ID at index ${i}`);
+          return;
+        }
+        try {
+          const card = getCardById(id);
+          if (card.cardId !== id) {
+             console.error(`Validation Failed: ${playerId} requested ${id} but got ${card.cardId}`);
+             return;
+          }
+        } catch (e) {
+          console.error(`Validation Failed: ${playerId} deck contains unknown ID ${id}`);
+          return;
+        }
+      }
+    }
+
     this.gameState = this.engine.createInitialState(
       `cf_game_${this.roomCode}`,
       deckACardIds,
@@ -311,6 +360,33 @@ export class GameRoom {
       'HUMAN',
       'HUMAN'
     );
+
+    // GameEngine Output Validation
+    for (const [playerId, statePlayer] of [['PLAYER_A', this.gameState.playerA], ['PLAYER_B', this.gameState.playerB]] as const) {
+      const allCards = [
+        ...statePlayer.deck,
+        ...statePlayer.hand,
+        ...statePlayer.battlefield,
+        ...statePlayer.runes,
+        ...statePlayer.archive
+      ];
+      if (allCards.length !== 40) {
+        console.error(`Post-Validation Failed: ${playerId} total cards is ${allCards.length} instead of 40`);
+        return;
+      }
+      for (const card of allCards) {
+        if (card.cardId !== card.baseCard.cardId) {
+          console.error(`Post-Validation Failed: ${playerId} card instance cardId ${card.cardId} does not match baseCard.cardId ${card.baseCard.cardId}`);
+          return;
+        }
+        if (card.cardId === 'undefined' || !card.cardId) {
+          console.error(`Post-Validation Failed: ${playerId} card has undefined or empty cardId`);
+          return;
+        }
+      }
+    }
+    
+    console.log('[ONLINE CARD TRACE] ENGINE OUTPUT A:', this.gameState.playerA.deck.slice(0, 5).map(c => c.cardId));
 
     this.stepCount = 0;
     this.replayLog = [];
