@@ -38,17 +38,8 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({ customDecks, h
     }
 
     const newClient = new MultiplayerClient(serverUrl);
-    setClient(newClient);
 
-    return () => {
-      newClient.disconnect();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!client) return;
-
-    client.setCallbacks({
+    newClient.setCallbacks({
       onConnectionChange: (connStatus) => {
         console.log('[ONLINE DEBUG] (MultiplayerView received state)', {
           status: connStatus,
@@ -79,7 +70,6 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({ customDecks, h
       },
       onStateUpdate: (state, log) => {
         setOnlineGameState(state);
-        // Note: logs could be passed to GameBoard if refactored
       },
       onError: (err) => {
         setError(err);
@@ -90,7 +80,13 @@ export const MultiplayerView: React.FC<MultiplayerViewProps> = ({ customDecks, h
         setOnlineGameState(null);
       }
     });
-  }, [client]);
+
+    setClient(newClient);
+
+    return () => {
+      newClient.disconnect();
+    };
+  }, []);
 
   const handleCreateRoom = () => {
     if (connectionStatus !== 'ONLINE') {

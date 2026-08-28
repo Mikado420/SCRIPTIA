@@ -13,6 +13,40 @@ export interface MultiplayerCallbacks {
   onConnectionChange?: (status: 'CONNECTING' | 'ONLINE' | 'OFFLINE') => void;
 }
 
+/**
+ * Minimal direct health check function (independent from WebSocket / GameEngine)
+ */
+export async function checkDirectHealth(serverUrl: string = DEFAULT_WORKER_URL): Promise<{ ok: boolean; status: number; data: any }> {
+  let httpBase = serverUrl.trim();
+  if (httpBase.startsWith('ws://')) httpBase = httpBase.replace('ws://', 'http://');
+  if (httpBase.startsWith('wss://')) httpBase = httpBase.replace('wss://', 'https://');
+  httpBase = httpBase.replace(/\/$/, '');
+
+  const healthUrl = `${httpBase}/api/health`;
+  console.log('[SCRIPTIA ONLINE TEST] URL:', healthUrl);
+
+  try {
+    const res = await fetch(healthUrl, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+    console.log('[SCRIPTIA ONLINE TEST] HTTP:', res.status);
+    const data: any = await res.json().catch(() => null);
+    console.log('[SCRIPTIA ONLINE TEST] BODY:', data);
+
+    if (res.ok && data && (data.status === 'ok' || data.service)) {
+      console.log('[SCRIPTIA ONLINE TEST] RESULT: ONLINE');
+      return { ok: true, status: res.status, data };
+    } else {
+      console.error('[SCRIPTIA ONLINE TEST] RESULT: OFFLINE (invalid status or body)', data);
+      return { ok: false, status: res.status, data };
+    }
+  } catch (error) {
+    console.error('[SCRIPTIA ONLINE TEST] RESULT: OFFLINE', error);
+    return { ok: false, status: 0, data: null };
+  }
+}
+
 export class MultiplayerClient {
   private ws: WebSocket | null = null;
   private serverUrl: string;
@@ -60,7 +94,7 @@ export class MultiplayerClient {
   public async checkHealth(): Promise<boolean> {
     const httpBase = this.getHttpBaseUrl();
     const healthUrl = `${httpBase}/api/health`;
-    console.log('[Multiplayer] Health check started:', healthUrl);
+    console.log('[SCRIPTIA ONLINE TEST] URL:', healthUrl);
 
     try {
       this.updateServerStatus('CONNECTING', 'health_start');
@@ -69,26 +103,23 @@ export class MultiplayerClient {
         headers: { 'Accept': 'application/json' },
       });
 
-      console.log('[Multiplayer] Health check response:', {
-        url: healthUrl,
-        status: response.status,
-        ok: response.ok,
-      });
+      console.log('[SCRIPTIA ONLINE TEST] HTTP:', response.status);
 
       if (response.ok) {
         const data: any = await response.json().catch(() => null);
+        console.log('[SCRIPTIA ONLINE TEST] BODY:', data);
         if (data && (data.status === 'ok' || data.service)) {
-          console.log('[Multiplayer] Cloudflare Worker ONLINE');
+          console.log('[SCRIPTIA ONLINE TEST] RESULT: ONLINE');
           this.updateServerStatus('ONLINE', 'health_success');
           return true;
         }
       }
 
-      console.warn('[Multiplayer] Cloudflare Worker OFFLINE (invalid status or payload)');
+      console.error('[SCRIPTIA ONLINE TEST] RESULT: OFFLINE (invalid status or payload)');
       this.updateServerStatus('OFFLINE', 'health_failure');
       return false;
     } catch (err) {
-      console.warn('[Multiplayer] Cloudflare Worker OFFLINE:', err);
+      console.error('[SCRIPTIA ONLINE TEST] RESULT: OFFLINE', err);
       this.updateServerStatus('OFFLINE', 'health_failure');
       return false;
     }
@@ -348,6 +379,7 @@ export class MultiplayerClient {
       } catch {}
       this.ws = null;
     }
+    this.updateServerStatus('OFFLINE', 'client_disconnect');
   }
 }
 

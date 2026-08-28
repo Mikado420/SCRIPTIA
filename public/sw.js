@@ -1,5 +1,5 @@
 // Service Worker for TCG Simulator PWA
-const CACHE_VERSION = 'v2.3.1';
+const CACHE_VERSION = 'v2.3.2';
 const STATIC_CACHE_NAME = `tcg-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE_NAME = `tcg-runtime-${CACHE_VERSION}`;
 
@@ -12,14 +12,14 @@ const PRECACHE_URLS = [
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(STATIC_CACHE_NAME).then((cache) => {
       return cache.addAll(PRECACHE_URLS).catch((err) => {
-        console.warn('Pre-caching some assets failed:', err);
+        console.warn('[SW] Pre-caching some assets failed:', err);
       });
     })
   );
-  // Do NOT force self.skipWaiting() automatically to avoid corrupting active battles
 });
 
 self.addEventListener('activate', (event) => {
@@ -47,12 +47,17 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip API or non-GET requests
+  // Cross-origin requests (e.g. Cloudflare Worker APIs or WebSockets) must NEVER be intercepted by SW
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
+  // Skip local API or non-GET requests
   if (request.method !== 'GET' || url.pathname.startsWith('/api/')) {
     return;
   }
 
-  // Network-first for navigation (HTML), stale-while-revalidate for static assets
+  // Network-first for navigation (HTML)
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
@@ -70,7 +75,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-first / Stale-while-revalidate for assets
+  // Stale-while-revalidate for local static assets
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
       const fetchPromise = fetch(request)
@@ -81,10 +86,7 @@ self.addEventListener('fetch', (event) => {
           }
           return networkResponse;
         })
-        .catch((err) => {
-          // Network failed, nothing extra to do if cachedResponse exists
-          return cachedResponse;
-        });
+        .catch(() => cachedResponse);
 
       return cachedResponse || fetchPromise;
     })
