@@ -22,12 +22,14 @@ export class MultiplayerClient {
   private reconnectTimer: any = null;
   private pingInterval: any = null;
   private healthCheckTimer: any = null;
-  private lastHealthStatus: 'CONNECTING' | 'ONLINE' | 'OFFLINE' = 'CONNECTING';
+  private serverStatus: 'CONNECTING' | 'ONLINE' | 'OFFLINE' = 'CONNECTING';
+  private socketStatus: 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' = 'DISCONNECTED';
 
-  constructor(serverUrl: string = DEFAULT_WORKER_URL) {
-    this.serverUrl = serverUrl || DEFAULT_WORKER_URL;
-    this.checkHealth();
-    this.startHealthCheckLoop();
+  constructor(serverUrl?: string) {
+    const envUrl = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_ONLINE_SERVER_URL : undefined;
+    const resolvedUrl = (serverUrl || envUrl || DEFAULT_WORKER_URL).trim();
+    this.serverUrl = resolvedUrl || DEFAULT_WORKER_URL;
+    console.log('[Multiplayer] Server URL:', this.serverUrl);
   }
 
   private getHttpBaseUrl(): string {
@@ -40,29 +42,44 @@ export class MultiplayerClient {
     return url.replace(/\/$/, '');
   }
 
+  private updateServerStatus(status: 'CONNECTING' | 'ONLINE' | 'OFFLINE') {
+    this.serverStatus = status;
+    this.callbacks.onConnectionChange?.(this.serverStatus);
+  }
+
   public async checkHealth(): Promise<boolean> {
     const httpBase = this.getHttpBaseUrl();
+    const healthUrl = `${httpBase}/api/health`;
+    console.log('[Multiplayer] Health check started:', healthUrl);
+
     try {
-      this.callbacks.onConnectionChange?.('CONNECTING');
-      const response = await fetch(`${httpBase}/api/health`, {
+      this.updateServerStatus('CONNECTING');
+      const response = await fetch(healthUrl, {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
       });
+
+      console.log('[Multiplayer] Health check response:', {
+        url: healthUrl,
+        status: response.status,
+        ok: response.ok,
+      });
+
       if (response.ok) {
         const data: any = await response.json().catch(() => null);
         if (data && (data.status === 'ok' || data.service)) {
-          this.lastHealthStatus = 'ONLINE';
-          this.callbacks.onConnectionChange?.('ONLINE');
+          console.log('[Multiplayer] Cloudflare Worker ONLINE');
+          this.updateServerStatus('ONLINE');
           return true;
         }
       }
-      this.lastHealthStatus = 'OFFLINE';
-      this.callbacks.onConnectionChange?.('OFFLINE');
+
+      console.warn('[Multiplayer] Cloudflare Worker OFFLINE (invalid status or payload)');
+      this.updateServerStatus('OFFLINE');
       return false;
     } catch (err) {
-      console.warn('Health check failed for Cloudflare Worker:', err);
-      this.lastHealthStatus = 'OFFLINE';
-      this.callbacks.onConnectionChange?.('OFFLINE');
+      console.warn('[Multiplayer] Cloudflare Worker OFFLINE:', err);
+      this.updateServerStatus('OFFLINE');
       return false;
     }
   }
@@ -70,7 +87,8 @@ export class MultiplayerClient {
   private startHealthCheckLoop() {
     this.stopHealthCheckLoop();
     this.healthCheckTimer = setInterval(() => {
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      // Only perform background health check if not actively connected to a room socket
+      if (this.socketStatus !== 'CONNECTED') {
         this.checkHealth();
       }
     }, 15000);
@@ -84,7 +102,7 @@ export class MultiplayerClient {
   }
 
   private resolveWsUrl(url: string, roomCode?: string): string {
-    let wsUrl = url;
+    let wsUrl = url.trim();
     if (wsUrl.startsWith('http://')) {
       wsUrl = wsUrl.replace('http://', 'ws://');
     } else if (wsUrl.startsWith('https://')) {
@@ -93,9 +111,10 @@ export class MultiplayerClient {
       const loc = window.location;
       const proto = loc.protocol === 'https:' ? 'wss:' : 'ws:';
       wsUrl = `${proto}//${loc.host}${wsUrl}`;
+    } else if (!wsUrl.startsWith('ws://') && !wsUrl.startsWith('wss://')) {
+      wsUrl = `wss://${wsUrl}`;
     }
 
-    // Ensure WebSocket endpoint format: /ws?code=XXXXXX
     try {
       const parsed = new URL(wsUrl);
       if (!parsed.pathname.includes('/ws')) {
@@ -106,7 +125,8 @@ export class MultiplayerClient {
       }
       return parsed.toString();
     } catch {
-      return wsUrl;
+      const base = wsUrl.replace(/\/$/, '');
+      return roomCode ? `${base}/ws?code=${roomCode}` : `${base}/ws`;
     }
   }
 
@@ -125,13 +145,16 @@ export class MultiplayerClient {
 
     this.currentRoomCode = roomCode;
     const wsEndpoint = this.resolveWsUrl(this.serverUrl, this.currentRoomCode);
+    console.log('[Multiplayer] WebSocket connecting:', wsEndpoint);
 
     try {
-      this.callbacks.onConnectionChange?.('CONNECTING');
+      this.socketStatus = 'CONNECTING';
       this.ws = new WebSocket(wsEndpoint);
 
       this.ws.onopen = () => {
-        this.callbacks.onConnectionChange?.('ONLINE');
+        console.log('[Multiplayer] WebSocket OPEN');
+        this.socketStatus = 'CONNECTED';
+        this.updateServerStatus('ONLINE');
         this.startPing();
         if (onOpenAction) {
           onOpenAction();
@@ -139,10 +162,15 @@ export class MultiplayerClient {
       };
 
       this.ws.onclose = () => {
+        console.log('[Multiplayer] WebSocket CLOSED');
+        this.socketStatus = 'DISCONNECTED';
         this.stopPing();
-        this.callbacks.onConnectionChange?.('OFFLINE');
+
         if (!this.isExplicitlyClosed) {
-          // Auto retry connection after 3s if in room
+          // Trigger health check to verify overall server reachability
+          this.checkHealth();
+
+          // Auto retry connection after 3s if inside active room
           if (this.currentRoomCode) {
             this.reconnectTimer = setTimeout(() => {
               this.connect(this.currentRoomCode);
@@ -152,8 +180,9 @@ export class MultiplayerClient {
       };
 
       this.ws.onerror = (e) => {
-        console.warn('WebSocket connection error:', e);
-        this.callbacks.onConnectionChange?.('OFFLINE');
+        console.warn('[Multiplayer] WebSocket ERROR:', e);
+        this.socketStatus = 'DISCONNECTED';
+        this.callbacks.onError?.('通信エラーが発生しました。');
       };
 
       this.ws.onmessage = (event) => {
@@ -161,12 +190,13 @@ export class MultiplayerClient {
           const msg = JSON.parse(event.data);
           this.handleServerMessage(msg);
         } catch (err) {
-          console.error('Failed to parse WebSocket message:', err);
+          console.error('[Multiplayer] Failed to parse WebSocket message:', err);
         }
       };
     } catch (err) {
-      console.error('WebSocket creation error:', err);
-      this.callbacks.onConnectionChange?.('OFFLINE');
+      console.error('[Multiplayer] WebSocket creation error:', err);
+      this.socketStatus = 'DISCONNECTED';
+      this.callbacks.onError?.('WebSocket接続に失敗しました。');
     }
   }
 
@@ -220,9 +250,9 @@ export class MultiplayerClient {
 
   public setCallbacks(callbacks: MultiplayerCallbacks) {
     this.callbacks = { ...this.callbacks, ...callbacks };
-    if (this.lastHealthStatus) {
-      this.callbacks.onConnectionChange?.(this.lastHealthStatus);
-    }
+    // Start health check and background loop once callbacks are registered
+    this.checkHealth();
+    this.startHealthCheckLoop();
   }
 
   private send(data: any) {
@@ -233,14 +263,34 @@ export class MultiplayerClient {
     this.ws.send(JSON.stringify(data));
   }
 
-  public createRoom() {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  public async createRoom() {
+    console.log('[Multiplayer] Creating room...');
+    const httpBase = this.getHttpBaseUrl();
     let code = '';
-    for (let i = 0; i < 6; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    this.currentRoomCode = code;
 
+    try {
+      const res = await fetch(`${httpBase}/api/room/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (res.ok) {
+        const data: any = await res.json().catch(() => null);
+        if (data && data.code) {
+          code = data.code;
+        }
+      }
+    } catch (e) {
+      console.warn('[Multiplayer] Room create helper request failed, using client generator fallback:', e);
+    }
+
+    if (!code) {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+    }
+
+    this.currentRoomCode = code;
     this.connect(code, () => {
       this.send({ type: 'create_room', version: '2.3' });
     });
@@ -248,6 +298,7 @@ export class MultiplayerClient {
 
   public joinRoom(code: string) {
     const cleanCode = code.trim().toUpperCase();
+    console.log('[Multiplayer] Joining room:', cleanCode);
     this.currentRoomCode = cleanCode;
 
     this.connect(cleanCode, () => {
@@ -279,3 +330,4 @@ export class MultiplayerClient {
     }
   }
 }
+

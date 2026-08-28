@@ -22,13 +22,15 @@ function isOriginAllowed(origin: string | null): boolean {
 
 function getCorsHeaders(request: Request): HeadersInit {
   const origin = request.headers.get('Origin');
-  const allowed = origin || '*';
-  return {
-    'Access-Control-Allow-Origin': allowed,
+  const headers: Record<string, string> = {
+    'Access-Control-Allow-Origin': origin || '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
-    'Access-Control-Allow-Credentials': 'true',
   };
+  if (origin) {
+    headers['Access-Control-Allow-Credentials'] = 'true';
+  }
+  return headers;
 }
 
 function handleCors(request: Request): Response {
