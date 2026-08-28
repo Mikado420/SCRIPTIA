@@ -41,8 +41,6 @@ jobs:
 
       - name: Build application
         run: npm run build
-        env:
-          VITE_ONLINE_SERVER_URL: "https://ais-pre-drtzwxbf7u2f35gt3wgytb-708262342394.asia-east1.run.app"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
