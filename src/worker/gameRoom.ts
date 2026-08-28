@@ -2,13 +2,14 @@ import { GameEngine } from '../engine/gameEngine';
 import { Action, GameState, PlayerId, CardData } from '../types/game';
 import { Env, ClientMessage, ServerMessage } from './types';
 import { sanitizeGameState } from './sanitize';
+import { getCardById } from '../data/cards';
 
 interface PlayerSession {
   connectionId: string;
   ws: WebSocket;
   role: PlayerId;
   ready: boolean;
-  deckCards: CardData[] | null;
+  deckCards: string[] | null;
   name: string;
 }
 
@@ -187,14 +188,37 @@ export class GameRoom {
     }
 
     if (msg.type === 'player_ready') {
+      const deckCards = msg.deckCards;
+      
+      if (!Array.isArray(deckCards)) {
+        this.send(ws, { type: 'error', message: 'デッキデータが不正です (配列ではありません)。' });
+        return;
+      }
+      if (deckCards.length !== 40) {
+        this.send(ws, { type: 'error', message: `デッキデータが不正です (40枚ではありません。現在の枚数: ${deckCards.length})。` });
+        return;
+      }
+      for (const cardId of deckCards) {
+        if (typeof cardId !== 'string' || cardId.trim() === '') {
+          this.send(ws, { type: 'error', message: 'デッキデータが不正です (空のIDが含まれています)。' });
+          return;
+        }
+        try {
+          getCardById(cardId);
+        } catch (err) {
+          this.send(ws, { type: 'error', message: `デッキデータが不正です (存在しないカード: ${cardId})。` });
+          return;
+        }
+      }
+
       let isHost = false;
       if (this.playerA && this.playerA.connectionId === connectionId) {
         this.playerA.ready = true;
-        this.playerA.deckCards = msg.deckCards;
+        this.playerA.deckCards = deckCards;
         isHost = true;
       } else if (this.playerB && this.playerB.connectionId === connectionId) {
         this.playerB.ready = true;
-        this.playerB.deckCards = msg.deckCards;
+        this.playerB.deckCards = deckCards;
       } else {
         this.send(ws, { type: 'error', message: 'プレイヤーが登録されていません。' });
         return;
@@ -250,8 +274,8 @@ export class GameRoom {
     const seed = Date.now() ^ (Math.floor(Math.random() * 1000000));
     this.engine = new GameEngine(seed);
 
-    const deckACardIds = this.playerA.deckCards.map((c) => c.cardId);
-    const deckBCardIds = this.playerB.deckCards.map((c) => c.cardId);
+    const deckACardIds = this.playerA.deckCards;
+    const deckBCardIds = this.playerB.deckCards;
 
     this.gameState = this.engine.createInitialState(
       `cf_game_${this.roomCode}`,

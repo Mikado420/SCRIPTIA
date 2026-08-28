@@ -7,6 +7,7 @@ import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { GameEngine } from './src/engine/gameEngine.js';
 import { GameState, Action, PlayerId } from './src/types/game.js';
+import { getCardById } from './src/data/cards.js';
 
 dotenv.config();
 
@@ -60,7 +61,7 @@ interface PlayerSession {
   ws: WebSocket;
   role: PlayerId;
   ready: boolean;
-  deckCards: any[] | null;
+  deckCards: string[] | null;
 }
 
 interface Room {
@@ -270,12 +271,30 @@ wss.on('connection', (ws: WebSocket, req) => {
         const room = currentRoom || (msg.code ? rooms.get(msg.code.toUpperCase()) : null);
         if (!room) return sendMsg(ws, { type: 'error', message: 'ルームが存在しません。' });
 
+        const deckCards = msg.deckCards;
+        if (!Array.isArray(deckCards)) {
+          return sendMsg(ws, { type: 'error', message: 'デッキデータが不正です (配列ではありません)。' });
+        }
+        if (deckCards.length !== 40) {
+          return sendMsg(ws, { type: 'error', message: `デッキデータが不正です (40枚ではありません。現在の枚数: ${deckCards.length})。` });
+        }
+        for (const cardId of deckCards) {
+          if (typeof cardId !== 'string' || cardId.trim() === '') {
+            return sendMsg(ws, { type: 'error', message: 'デッキデータが不正です (空のIDが含まれています)。' });
+          }
+          try {
+            getCardById(cardId);
+          } catch (err) {
+            return sendMsg(ws, { type: 'error', message: `デッキデータが不正です (存在しないカード: ${cardId})。` });
+          }
+        }
+
         if (room.playerA && room.playerA.connectionId === connectionId) {
           room.playerA.ready = true;
-          room.playerA.deckCards = msg.deckCards;
+          room.playerA.deckCards = deckCards;
         } else if (room.playerB && room.playerB.connectionId === connectionId) {
           room.playerB.ready = true;
-          room.playerB.deckCards = msg.deckCards;
+          room.playerB.deckCards = deckCards;
         } else {
           return sendMsg(ws, { type: 'error', message: '未登録のプレイヤーです。' });
         }
@@ -291,8 +310,8 @@ wss.on('connection', (ws: WebSocket, req) => {
           room.engine = new GameEngine(seed);
           room.gameState = room.engine.createInitialState(
             `game_${room.id}`,
-            room.playerA.deckCards.map((c: any) => c.cardId),
-            room.playerB.deckCards.map((c: any) => c.cardId),
+            room.playerA.deckCards,
+            room.playerB.deckCards,
             'Player 1 (朱)',
             'Player 2 (蒼)',
             false,

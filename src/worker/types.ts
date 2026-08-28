@@ -9,7 +9,7 @@ export interface Env {
 export type ClientMessage =
   | { type: 'create_room'; version: string }
   | { type: 'join_room'; code: string; version: string }
-  | { type: 'player_ready'; code: string; deckCards: CardData[] }
+  | { type: 'player_ready'; code: string; deckCards: string[] }
   | { type: 'action'; code: string; action: Action }
   | { type: 'ping' };
 
